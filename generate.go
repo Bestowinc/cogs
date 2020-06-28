@@ -11,15 +11,13 @@ type CogManifest struct {
 }
 
 type Env struct {
-	Name string
-	Cfgs []Cfg
+	Cfg map[string]Cfg
 }
 
 type Cfg struct {
-	name    string
-	path    string
-	subPath string
-	value   string
+	Path    string
+	SubPath string
+	Value   string
 }
 
 func Generate(env, cogFile string) error {
@@ -27,6 +25,48 @@ func Generate(env, cogFile string) error {
 	if _, err := toml.DecodeFile(cogFile, &manifest); err != nil {
 		return err
 	}
-	fmt.Println(manifest)
+	fmt.Println(manifest.Envs)
 	return nil
 }
+
+/*
+{
+  "name": "some_service",
+  "env": {
+    "docker": [
+      {
+        "cfg": {
+          "other_var": {
+            "value": "other_var_value"
+          },
+          "var": {
+            "value": "var_value"
+          }
+        },
+        "enc": {
+          "enc_var": {
+            "path": "path/to/file.enc.yaml"
+          }
+        }
+      }
+    ],
+    "qa": [
+      {
+        "cfg": {
+          "var": {
+            "name": "VAR_NAME",
+            "path": "path/to/qa/prefs.yaml",
+            "sub_path": "config.key"
+          }
+        },
+        "enc": {
+          "enc_var": {
+            "name": "ENC_VAR_NAME",
+            "path": "path/to/qa/file.enc.yaml"
+          }
+        }
+      }
+    ]
+  }
+}
+*/
