@@ -25,4 +25,43 @@ var.path = [ "path/to/qa/prefs.yaml", "config.key" ]
 enc_var.name = "ENC_VAR_NAME"
 enc_var.path = "path/to/qa/file.enc.yaml"
 
-
+# {
+#   "name": "some_service",
+#   "env": {
+#     "docker": [
+#       {
+#         "cfg": {
+#           "other_var": {
+#             "value": "other_var_value"
+#           },
+#           "var": {
+#             "value": "var_value"
+#           }
+#         },
+#         "enc": {
+#           "enc_var": {
+#             "path": "path/to/file.enc.yaml"
+#           }
+#         }
+#       }
+#     ],
+#     "qa": [
+#       {
+#         "cfg": {
+#           "var": {
+#             "name": "VAR_NAME",
+#             "path": "path/to/qa/prefs.yaml",
+#             "sub_path": "config.key"
+#           }
+#         },
+#         "enc": {
+#           "enc_var": {
+#             "name": "ENC_VAR_NAME",
+#             "path": "path/to/qa/file.enc.yaml"
+#           }
+#         }
+#       }
+#     ]
+#   }
+# }
+#
