@@ -8,10 +8,6 @@ import (
 	"github.com/docopt/docopt-go"
 )
 
-// var cmdMap = map[string]func(cog{
-//     "generate": generateCmd,
-// }
-
 func main() {
 	usage := `Usage:
   example generate <env> <cog-file>`
