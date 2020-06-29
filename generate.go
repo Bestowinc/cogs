@@ -34,11 +34,11 @@ func (c Cfg) GenerateValue() string {
 
 	if c.encrypted {
 		// TODO COGS-1657
-		// decrypt.Open(c.Path, c.SubPath)
+		// decrypt.File(c.Path, c.SubPath)
 		return "|enc| " + c.Path
 	}
 	// TODO COGS-1659
-	// cogs.Open(c.Path, c.SubPath)
+	// cogs.File(c.Path, c.SubPath)
 	return "path." + c.Path + "/" + c.SubPath
 
 }
@@ -120,7 +120,7 @@ func ParseEnv(rawMap interface{}) (cfgMap map[string]Cfg, err error) {
 	if rawEnc, ok := mapEnv["enc"]; ok {
 		encMap, ok := rawEnc.(map[string]interface{})
 		if !ok {
-			return nil, fmt.Errorf("enc must be a table")
+			return nil, fmt.Errorf(".enc must map to a table")
 		}
 
 		_, err := parseEnv(cfgMap, encMap)
@@ -134,13 +134,15 @@ func ParseEnv(rawMap interface{}) (cfgMap map[string]Cfg, err error) {
 		// remove env map now that it is parsed
 		delete(mapEnv, "enc")
 	}
-	// TODO handle same key name declared as env.key_name and env.enc.key_name
 	return parseEnv(cfgMap, mapEnv)
 }
 
 func parseEnv(cfgMap map[string]Cfg, mapEnv map[string]interface{}) (map[string]Cfg, error) {
 	var err error
 	for k, rawCfg := range mapEnv {
+		if _, ok := cfgMap[k]; ok {
+			return nil, fmt.Errorf("%s: duplicate key present in env and env.enc", k)
+		}
 		switch t := rawCfg.(type) {
 		case string:
 			val := rawCfg.(string)
@@ -170,7 +172,7 @@ func parseCfg(cfgVal map[string]interface{}) (Cfg, error) {
 		case "name":
 			cfg.Name, ok = v.(string)
 			if !ok {
-				return cfg, fmt.Errorf("%s.name must be a string", k)
+				return cfg, fmt.Errorf(".name must be a string", k)
 			}
 		case "path":
 			cfg.Path, ok = v.(string)
