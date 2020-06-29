@@ -6,7 +6,7 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-// Cfg holds all the data needed to generate one key value pair
+// Cfg holds all the data needed to generate one string key value pair
 type Cfg struct {
 	// Defaults to key name unless explicitly declared
 	Name  string
@@ -18,9 +18,9 @@ type Cfg struct {
 }
 
 // GenerateValue returns the value corresponding to a Cfg struct
-// if Path is present the string values of the found file
+// if Path resolves to a valid file the file byte value
 // is passed to a file reader object, attempting to serialize the contents of
-// the file if valid
+// the file if type is supported
 func (c Cfg) GenerateValue() string {
 	// if Path is empty or Value is non empty
 	if c.Path == "" || c.Value != "" {
@@ -51,7 +51,11 @@ func (c Cfg) String() string {
 
 type configMap map[string]Cfg
 
-// Gear represents one of the envs in a cog manifest
+// Gear represents one of the envs in a cog manifest.
+// The term "gear" is used to refer to the operating state of a machine (similar
+// to how a microservice can operate locally or in a remote environment)
+// rather than a gear object. The term "switching gears" is an apt representation
+// of how one Cog manifest file can have mane environments
 type Gear struct {
 	Name   string
 	cfgMap configMap
