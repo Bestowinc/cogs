@@ -64,7 +64,6 @@ func (g *Gear) GenerateMap() map[string]string {
 }
 
 type rawManifest struct {
-	name  string
 	table map[string]rawEnv
 }
 
@@ -111,19 +110,19 @@ func generate(envName string, tree *toml.Tree) (map[string]string, error) {
 	return gear.GenerateMap(), nil
 }
 
-// parseEnv traverses an map interface to return a Cfg string map
+// parseEnv traverses an map interface to populate a gear's configMap
 func (g *Gear) parseEnv(env rawEnv) (err error) {
 
 	g.cfgMap = make(configMap)
 
 	// treat enc key as a nested g.config
-	if rawEnc, ok := env["enc"]; ok {
-		rawEncryptedEnv, ok := rawEnc.(map[string]interface{})
+	if enc, ok := env["enc"]; ok {
+		rawEnc, ok := enc.(map[string]interface{})
 		if !ok {
 			return fmt.Errorf(".enc must map to a table")
 		}
 
-		g.cfgMap, err = parseEnv(g.cfgMap, rawEncryptedEnv)
+		g.cfgMap, err = parseEnv(g.cfgMap, rawEnc)
 		if err != nil {
 			return err
 		}
@@ -150,14 +149,12 @@ func parseEnv(cfgMap configMap, env rawEnv) (configMap, error) {
 		}
 		switch t := rawCfg.(type) {
 		case string:
-			val := rawCfg.(string)
 			cfgMap[k] = Cfg{
 				Name:  k,
-				Value: val,
+				Value: t,
 			}
 		case map[string]interface{}:
-			val := rawCfg.(map[string]interface{})
-			cfgMap[k], err = parseCfg(val)
+			cfgMap[k], err = parseCfg(t)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %s", k, err)
 			}
@@ -168,6 +165,7 @@ func parseEnv(cfgMap configMap, env rawEnv) (configMap, error) {
 	return cfgMap, nil
 }
 
+// parseCfg handes
 func parseCfg(cfgVal map[string]interface{}) (Cfg, error) {
 	var cfg Cfg
 	var ok bool
@@ -180,6 +178,11 @@ func parseCfg(cfgVal map[string]interface{}) (Cfg, error) {
 				return cfg, fmt.Errorf(".name must be a string")
 			}
 		case "path":
+			// a path key can map to two valid types:
+			// 1. path value is a single string mapping to filepath
+			// 2. path value  is a two index slice mapping to [filepath, subpath] respectively
+
+			// singular filepath string
 			cfg.Path, ok = v.(string)
 			if ok {
 				continue
@@ -192,11 +195,13 @@ func parseCfg(cfgVal map[string]interface{}) (Cfg, error) {
 			if len(pathSlice) != 2 {
 				return cfg, fmt.Errorf("path array must only contain two values mapping to path and supbpath respectively")
 			}
+			// filepath string
 			cfg.Path, ok = pathSlice[0].(string)
 			if !ok {
 				return cfg, fmt.Errorf("path must be a string or array of strings")
 			}
 
+			// subpath string index used to traverse the data object once deserialized
 			cfg.SubPath, ok = pathSlice[1].(string)
 			if !ok {
 				return cfg, fmt.Errorf("path must be a string or array of strings")
