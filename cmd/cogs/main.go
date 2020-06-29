@@ -20,7 +20,6 @@ func main() {
 	}
 
 	opts.Bind(&conf)
-	_ = fmt.Println
 	switch {
 	case conf.Generate:
 		if err := cogs.Generate(conf.Env, conf.File); err != nil {
