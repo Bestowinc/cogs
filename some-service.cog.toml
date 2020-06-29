@@ -1,15 +1,13 @@
-name = "some_service"
+name = ["some_service"]
 
-# https://toml.io/en/v1.0.0-rc.1#section-18
-
-[env.docker.cfg]
-var.value = "var_value"
-other_var.value = "other_var_value"
+[docker]
+var = "var_value"
+other_var = "other_var_value"
 # docker.enc & docker.cfg indicates the division between plaintext configs and encrypted ones
-[env.docker.enc]
-enc_var.path = "path/to/file.enc.yaml"
+[docker.enc]
+var.path = "path/to/file.enc.yaml"
 
-[env.qa.cfg] 
+[qa] 
 var.name = "VAR_NAME"
 # traverse "path/to/qa/prefs.yaml" in yq style if file is not a flat structure looking for VAR_NAME key name:
 var.path = [ "path/to/qa/prefs.yaml", "config.key" ]
@@ -21,47 +19,36 @@ var.path = [ "path/to/qa/prefs.yaml", "config.key" ]
 #   key:
 #     VAR_NAME: "var_value"
 #     OTHER_VAR_NAME: "other_var_value"
-[env.qa.enc]
+[qa.enc]
 enc_var.name = "ENC_VAR_NAME"
 enc_var.path = "path/to/qa/file.enc.yaml"
 
 # {
-#   "name": "some_service",
-#   "env": {
-#     "docker": [
-#       {
-#         "cfg": {
-#           "other_var": {
-#             "value": "other_var_value"
-#           },
-#           "var": {
-#             "value": "var_value"
-#           }
-#         },
-#         "enc": {
-#           "enc_var": {
-#             "path": "path/to/file.enc.yaml"
-#           }
-#         }
+#   "name": [
+#     "some_service"
+#   ],
+#   "docker": {
+#     "other_var": "other_var_value",
+#     "var": "var_value",
+#     "enc": {
+#       "var": {
+#         "path": "path/to/file.enc.yaml"
 #       }
-#     ],
-#     "qa": [
-#       {
-#         "cfg": {
-#           "var": {
-#             "name": "VAR_NAME",
-#             "path": "path/to/qa/prefs.yaml",
-#             "sub_path": "config.key"
-#           }
-#         },
-#         "enc": {
-#           "enc_var": {
-#             "name": "ENC_VAR_NAME",
-#             "path": "path/to/qa/file.enc.yaml"
-#           }
-#         }
+#     }
+#   },
+#   "qa": {
+#     "enc": {
+#       "enc_var": {
+#         "name": "ENC_VAR_NAME",
+#         "path": "path/to/qa/file.enc.yaml"
 #       }
-#     ]
+#     },
+#     "var": {
+#       "name": "VAR_NAME",
+#       "path": [
+#         "path/to/qa/prefs.yaml",
+#         "config.key"
+#       ]
+#     }
 #   }
 # }
-#
