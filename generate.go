@@ -6,16 +6,7 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-type Cog struct {
-	Name string
-	// generate multiple envs?
-	env Env
-}
-
-type Env struct {
-	Config map[string]Cfg
-}
-
+// Cfg holds all the data needed to generate one key value pair
 type Cfg struct {
 	// Defaults to key name unless explicitly declared
 	Name  string
@@ -26,6 +17,7 @@ type Cfg struct {
 	encrypted bool
 }
 
+// GenerateValue returns the value corresponding to a Cfg struct
 func (c Cfg) GenerateValue() string {
 	// if Path is empty or Value is non empty
 	if c.Path == "" || c.Value != "" {
@@ -43,6 +35,7 @@ func (c Cfg) GenerateValue() string {
 
 }
 
+// String holds the string representation of a Cfg struct
 func (c Cfg) String() string {
 	return fmt.Sprintf(`Cfg{
 	Name: %s
@@ -53,19 +46,29 @@ func (c Cfg) String() string {
 }`, c.Name, c.Value, c.Path, c.SubPath, c.encrypted)
 }
 
-func (e Env) GenerateMap() map[string]string {
+type configMap map[string]Cfg
+
+// Gear represents one of the envs in a cog maifest
+type Gear struct {
+	Name   string
+	cfgMap configMap
+}
+
+func (g *Gear) GenerateMap() map[string]string {
 	cfgMap := make(map[string]string)
-	for k, cfg := range e.Config {
+	for k, cfg := range g.cfgMap {
 		cfgMap[k] = cfg.GenerateValue()
 	}
 	return cfgMap
 
 }
 
-// Mapper is an iterface that defines a struct able to generate a flat associative array
-type Mapper interface {
-	GenerateMap() map[string]string
+type rawManifest struct {
+	name  string
+	table map[string]rawEnv
 }
+
+type rawEnv map[string]interface{}
 
 // Generate is a top level command that takes an env argument and cogfilepath to return a string map
 func Generate(env, cogFile string) (map[string]string, error) {
@@ -78,68 +81,70 @@ func Generate(env, cogFile string) (map[string]string, error) {
 
 }
 
-func generate(env string, tree *toml.Tree) (map[string]string, error) {
-	var cog Cog
+func generate(envName string, tree *toml.Tree) (map[string]string, error) {
+	var gear Gear
 	var ok bool
 	var err error
 
 	// grab manifest name
-	cog.Name, ok = tree.Get("name").(string)
-	if !ok || cog.Name == "" {
+	gear.Name, ok = tree.Get("name").(string)
+	if !ok || gear.Name == "" {
 		return nil, fmt.Errorf("manifest.name string value must be present as a string")
 	}
+	tree.Delete("name")
 
-	var rawManifest map[string]interface{}
-	if err = tree.Unmarshal(&rawManifest); err != nil {
+	var manifest rawManifest
+	if err = tree.Unmarshal(&manifest.table); err != nil {
 		return nil, err
 	}
 
-	rawEnv, ok := rawManifest[env]
+	env, ok := manifest.table[envName]
 	if !ok {
-		return nil, fmt.Errorf("%s environment missing from cog file", env)
+		return nil, fmt.Errorf("%s environment missing from cog file", envName)
 	}
 
-	cog.env.Config, err = ParseEnv(rawEnv)
+	err = gear.parseEnv(env)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %s", env, err)
+		return nil, fmt.Errorf("%s: %s", envName, err)
 	}
 
-	return cog.env.GenerateMap(), nil
+	return gear.GenerateMap(), nil
 }
 
-// ParseEnv traverses an map interface to return a Cfg string map
-func ParseEnv(rawMap interface{}) (cfgMap map[string]Cfg, err error) {
-	mapEnv, ok := rawMap.(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("env must be a table")
-	}
+// parseEnv traverses an map interface to return a Cfg string map
+func (g *Gear) parseEnv(env rawEnv) (err error) {
 
-	cfgMap = make(map[string]Cfg)
+	g.cfgMap = make(configMap)
 
-	// treat enc key as a nested cfgMap
-	if rawEnc, ok := mapEnv["enc"]; ok {
-		encMap, ok := rawEnc.(map[string]interface{})
+	// treat enc key as a nested g.config
+	if rawEnc, ok := env["enc"]; ok {
+		rawEncryptedEnv, ok := rawEnc.(map[string]interface{})
 		if !ok {
-			return nil, fmt.Errorf(".enc must map to a table")
+			return fmt.Errorf(".enc must map to a table")
 		}
 
-		_, err := parseEnv(cfgMap, encMap)
+		g.cfgMap, err = parseEnv(g.cfgMap, rawEncryptedEnv)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		for key, cfg := range cfgMap {
+		for key, cfg := range g.cfgMap {
 			cfg.encrypted = true
-			cfgMap[key] = cfg
+			g.cfgMap[key] = cfg
 		}
 		// remove env map now that it is parsed
-		delete(mapEnv, "enc")
+		delete(env, "enc")
 	}
-	return parseEnv(cfgMap, mapEnv)
+	g.cfgMap, err = parseEnv(g.cfgMap, env)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func parseEnv(cfgMap map[string]Cfg, mapEnv map[string]interface{}) (map[string]Cfg, error) {
+func parseEnv(cfgMap configMap, env rawEnv) (configMap, error) {
 	var err error
-	for k, rawCfg := range mapEnv {
+
+	for k, rawCfg := range env {
 		if _, ok := cfgMap[k]; ok {
 			return nil, fmt.Errorf("%s: duplicate key present in env and env.enc", k)
 		}
@@ -172,7 +177,7 @@ func parseCfg(cfgVal map[string]interface{}) (Cfg, error) {
 		case "name":
 			cfg.Name, ok = v.(string)
 			if !ok {
-				return cfg, fmt.Errorf(".name must be a string", k)
+				return cfg, fmt.Errorf(".name must be a string")
 			}
 		case "path":
 			cfg.Path, ok = v.(string)
