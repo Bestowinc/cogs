@@ -18,6 +18,9 @@ type Cfg struct {
 }
 
 // GenerateValue returns the value corresponding to a Cfg struct
+// if Path is present the string values of the found file
+// is passed to a file reader object, attempting to serialize the contents of
+// the file if valid
 func (c Cfg) GenerateValue() string {
 	// if Path is empty or Value is non empty
 	if c.Path == "" || c.Value != "" {
@@ -48,12 +51,14 @@ func (c Cfg) String() string {
 
 type configMap map[string]Cfg
 
-// Gear represents one of the envs in a cog maifest
+// Gear represents one of the envs in a cog manifest
 type Gear struct {
 	Name   string
 	cfgMap configMap
 }
 
+// GenreateMap outputs the flat associative string, resolving potential filepath pointers
+// held by Cfg objects by calling the .GenerateValue() method
 func (g *Gear) GenerateMap() map[string]string {
 	cfgMap := make(map[string]string)
 	for k, cfg := range g.cfgMap {
@@ -159,13 +164,13 @@ func parseEnv(cfgMap configMap, env rawEnv) (configMap, error) {
 				return nil, fmt.Errorf("%s: %s", k, err)
 			}
 		default:
-			return nil, fmt.Errorf("%s: %s is an usupported type", k, t)
+			return nil, fmt.Errorf("%s: %s is an unsupported type", k, t)
 		}
 	}
 	return cfgMap, nil
 }
 
-// parseCfg handes
+// parseCfg handles the cases when a config key maps to a non string object type
 func parseCfg(cfgVal map[string]interface{}) (Cfg, error) {
 	var cfg Cfg
 	var ok bool
@@ -193,7 +198,7 @@ func parseCfg(cfgVal map[string]interface{}) (Cfg, error) {
 				return cfg, fmt.Errorf("path must be a string or array of strings")
 			}
 			if len(pathSlice) != 2 {
-				return cfg, fmt.Errorf("path array must only contain two values mapping to path and supbpath respectively")
+				return cfg, fmt.Errorf("path array must only contain two values mapping to path and subpath respectively")
 			}
 			// filepath string
 			cfg.Path, ok = pathSlice[0].(string)
