@@ -49,6 +49,4 @@ func Generate(env, cogFile string) error {
 
 // Validate ensures the given toml.Tree does not contain reserved namespaces
 // func Validate(tree *toml.Tree) error {
-//     for _, k := tree.Keys()
-
 // }
