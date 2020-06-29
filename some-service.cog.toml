@@ -1,4 +1,4 @@
-name = ["some_service"]
+name = "some_service"
 
 [docker]
 var = "var_value"
