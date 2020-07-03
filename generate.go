@@ -30,11 +30,11 @@ func (c Cfg) GenerateValue() string {
 	if c.encrypted {
 		// TODO COGS-1657
 		// decrypt.File(c.Path, c.SubPath)
-		return "|enc| " + c.Path
+		return "|enc|" + c.Path
 	}
 	// TODO COGS-1659
 	// cogs.File(c.Path, c.SubPath)
-	return "path." + c.Path + "/" + c.SubPath
+	return "|path|" + c.Path + "|subpath|" + c.SubPath
 
 }
 
@@ -55,13 +55,13 @@ type configMap map[string]Cfg
 // The term "gear" is used to refer to the operating state of a machine (similar
 // to how a microservice can operate locally or in a remote environment)
 // rather than a gear object. The term "switching gears" is an apt representation
-// of how one Cog manifest file can have mane environments
+// of how one Cog manifest file can have many environments
 type Gear struct {
 	Name   string
 	cfgMap configMap
 }
 
-// GenreateMap outputs the flat associative string, resolving potential filepath pointers
+// GenerateMap outputs the flat associative string, resolving potential filepath pointers
 // held by Cfg objects by calling the .GenerateValue() method
 func (g *Gear) GenerateMap() map[string]string {
 	cfgMap := make(map[string]string)
