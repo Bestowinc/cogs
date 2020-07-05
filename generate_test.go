@@ -23,16 +23,17 @@ type generateTestOut struct {
 }
 
 func TestGenerate(t *testing.T) {
-	testCases := []generateTestOut{{
-		name: "BasicConfig",
-		env:  "local",
-		toml: basicCogToml,
-		config: map[string]string{
-			"var":       "var_value",
-			"other_var": "other_var_value",
+	testCases := []generateTestOut{
+		{
+			name: "BasicConfig",
+			env:  "local",
+			toml: basicCogToml,
+			config: map[string]string{
+				"var":       "var_value",
+				"other_var": "other_var_value",
+			},
+			err: nil,
 		},
-		err: nil,
-	},
 		{
 			name: "ConfigWithPath",
 			env:  "qa",
@@ -43,7 +44,6 @@ func TestGenerate(t *testing.T) {
 			},
 			err: nil,
 		},
-
 		{
 			name:   "DuplicateKeyInEnc/Error",
 			env:    "local",
