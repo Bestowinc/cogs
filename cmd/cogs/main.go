@@ -11,7 +11,7 @@ import (
 
 func main() {
 	usage := `Usage:
-  example generate <env> <cog-file>`
+  cogs generate <env> <cog-file>`
 
 	opts, _ := docopt.ParseArgs(usage, os.Args[1:], "0.1")
 	var conf struct {

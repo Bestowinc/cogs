@@ -6,6 +6,8 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
+
+
 // Cfg holds all the data needed to generate one string key value pair
 type Cfg struct {
 	// Defaults to key name unless explicitly declared
@@ -15,17 +17,28 @@ type Cfg struct {
 	// default should be Cfg key name
 	SubPath   string
 	encrypted bool
+	readType readType
+}
+func (g Gear) bridgePath(path string, subPath string, rType readType) {
+	typeMap :=path+"/"+subPath
+	if storedType, ok := g.pathBridge[typeMap]; ok && storedType != rType {
+		panic("cannot have different readTypes for the %s%s map")
+	}
+
+
 }
 
-// GenerateValue returns the value corresponding to a Cfg struct
+// ResolveValue returns the value corresponding to a Cfg struct
 // if Path resolves to a valid file the file byte value
 // is passed to a file reader object, attempting to serialize the contents of
 // the file if type is supported
-func (c Cfg) GenerateValue() string {
+func (g Gear) ResolveValue(c Cfg) string {
 	// if Path is empty or Value is non empty
 	if c.Path == "" || c.Value != "" {
 		return c.Value
 	}
+
+	g.bridgePath(c.Path, c.SubPath, c.readType)
 
 	if c.encrypted {
 		// TODO COGS-1657
@@ -59,6 +72,7 @@ type configMap map[string]Cfg
 type Gear struct {
 	Name   string
 	cfgMap configMap
+	pathBridge map[string]readType
 }
 
 // GenerateMap outputs the flat associative string, resolving potential filepath pointers
@@ -66,7 +80,7 @@ type Gear struct {
 func (g *Gear) GenerateMap() map[string]string {
 	cfgMap := make(map[string]string)
 	for k, cfg := range g.cfgMap {
-		cfgMap[k] = cfg.GenerateValue()
+		cfgMap[k] = g.ResolveValue(cfg)
 	}
 	return cfgMap
 
@@ -215,10 +229,19 @@ func parseCfg(cfgVal map[string]interface{}) (Cfg, error) {
 			if !ok {
 				return cfg, fmt.Errorf("path must be a string or array of strings")
 			}
+		case "type":
+			cfg.readType := readType(k)
+			if err := rType.Validate(); err != nil {
+				return cfg, err
+			}
 
 		default:
 			return cfg, fmt.Errorf("%s is an unsupported key name", k)
 		}
+	if _, ok := cfgVal["type"]; ok {
+			cfg.readType := implicit
+	}
+
 	}
 	return cfg, nil
 }

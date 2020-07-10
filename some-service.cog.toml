@@ -22,6 +22,7 @@ var.path = [ "path/to/qa/prefs.yaml", "config.key" ]
 [qa.enc]
 enc_var.name = "ENC_VAR_NAME"
 enc_var.path = "path/to/qa/file.enc.yaml"
+enc_var.type = "dotenv"
 
 # {
 #   "name": [
