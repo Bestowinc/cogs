@@ -199,9 +199,21 @@ func decodeEnv(cfgMap configMap, env RawEnv) error {
 	var err error
 	var baseCfg Cfg
 
-	// TODO refactor so parseCfgMap can be called
+	// global path
 	if pathValue, ok := env["path"]; ok {
 		if err = decodePath(pathValue, &baseCfg, nil); err != nil {
+			return err
+		}
+	}
+
+	// global type
+	if rawValue, ok := env["type"]; ok {
+		strValue, ok := rawValue.(string)
+		if !ok {
+			return fmt.Errorf("env.type must be a string value")
+		}
+		baseCfg.readType = readType(strValue)
+		if err := baseCfg.readType.Validate(); err != nil {
 			return err
 		}
 	}
@@ -293,7 +305,11 @@ func parseCfgMap(varName string, baseCfg *Cfg, cfgVal map[string]interface{}) (*
 	}
 	// if readType was not specified:
 	if _, ok := cfgVal["type"]; !ok {
-		cfg.readType = deferred
+		if baseCfg != nil {
+			cfg.readType = baseCfg.readType
+		} else {
+			cfg.readType = deferred
+		}
 	}
 	// if name is not defined: `var = "value"`
 	// then set cfg.Name to the key name, "var" in this case
