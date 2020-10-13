@@ -5,15 +5,12 @@ var = "var_value"
 other_var = "other_var_value"
 # docker.enc & docker.cfg indicates the division between plaintext configs and encrypted ones
 [docker.enc]
-enc_var.path = "path/to/file.enc.yaml"
+var.path = "path/to/file.enc.yaml"
 
 [qa]
-billing_db.name = "BILLING_DB"
-billing_db.path = [ "ryerson/.kubernetes/gcp/qa/pbs/kustomization.yaml ", "configMapGenerator.[0].literals" ]
-billing_db_host.name = "BILLING_DB_HOST"
-billing_db_host.path = [ "ryerson/.kubernetes/gcp/qa/pbs/kustomization.yaml ", "configMapGenerator.[0].literals" ]
-some_other_var.name = "SOME_OTHER_VAR"
-some_other_var.path = [ "ryerson/.kubernetes/gcp/qa/pbs/kustomization.yaml ", "notConfigMapGenerator.other" ]
+var.name = "VAR_NAME"
+# traverse "path/to/qa/prefs.yaml" in yq style if file is not a flat structure looking for VAR_NAME key name:
+var.path = [ "path/to/qa/prefs.yaml", "config.key" ]
 # assumes config holds an associative array with a key name of VAR_NAME under "config.key"
 # to grab the value from:
 #
@@ -25,7 +22,6 @@ some_other_var.path = [ "ryerson/.kubernetes/gcp/qa/pbs/kustomization.yaml ", "n
 [qa.enc]
 enc_var.name = "ENC_VAR_NAME"
 enc_var.path = "path/to/qa/file.enc.yaml"
-# enc_var.type = "dotenv"
 
 # {
 #   "name": [
