@@ -6,5 +6,6 @@ other_var = "other_var_value"
 [qa]
 var.path = ["./test_files/manifest.yaml", "subpath"]
 other_var.path = ["./test_files/manifest.yaml", "subpath"]
+some_var.name = "some_name"
 [qa.enc]
 enc_var.path = "./path.enc"

@@ -30,7 +30,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		output, _ := json.MarshalIndent(cfgMap, "", "\t")
+		output, _ := json.MarshalIndent(cfgMap, "", "  ")
 		fmt.Println(string(output))
 	}
 }
