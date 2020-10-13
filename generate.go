@@ -127,6 +127,10 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]string, error) {
 }
 
 func (g *Gear) getCfgFilePath(cfgPath string) string {
+
+	if path.IsAbs(cfgPath) {
+		return cfgPath
+	}
 	return path.Join(path.Dir(g.filePath), cfgPath)
 }
 

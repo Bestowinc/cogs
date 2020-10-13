@@ -116,7 +116,6 @@ func (n *yamlVisitor) SetValue(cfg *Cfg) (err error) {
 		return err
 	}
 
-	fmt.Println("readType: ", cfg.readType)
 	// nodes with readType of deferred should be a string to string k/v pair
 	if node.Kind != yaml.MappingNode && cfg.readType != dotenv {
 		return fmt.Errorf("Node kind unsupported at this time: %s", kindStr[node.Kind])

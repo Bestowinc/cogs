@@ -16,9 +16,8 @@ enc_var.path = "./path.enc"
 
 # TODO example using kubernetes kustomize
 [kustomize]
-path = ["/Users/mkatychev/Documents/ryerson/.kubernetes/gcp/qa/pbs/kustomization.yaml", "configMapGenerator.[0].literals"]
+path = ["./test_files/kustomization.yaml", "configMapGenerator.[0].literals"]
 type = "dotenv"
 [kustomize.vars]
-billing_db = {path = [], name = "BILLING_DB"}
-billing_db_host = {path = [], name = "BILLING_DB_HOST"}
-http_port = {path = [], name = "HTTP_PORT"}
+var1 = {path = [], name = "VAR_1"}
+var2 = {path = [], name = "VAR_2"}
