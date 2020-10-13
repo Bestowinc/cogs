@@ -39,7 +39,7 @@ func TestGenerate(t *testing.T) {
 			env:  "qa",
 			toml: basicCogToml,
 			config: map[string]string{
-				"enc_var": "|enc|./path.enc",
+				"enc_var": "|path.enc|./path.enc|subpath|.subpath",
 				"var":     "|path|./path|subpath|.subpath",
 			},
 			err: nil,
@@ -52,9 +52,9 @@ func TestGenerate(t *testing.T) {
 				"var1":     "|path|./path|subpath|.subpath",
 				"var2":     "|path|./path|subpath|.other_subpath",
 				"var3":     "|path|./other_path|subpath|.subpath",
-				"enc_var1": "|path|./path.enc|subpath|.subpath",
-				"enc_var2": "|path|./path.enc|subpath|.other_subpath",
-				"enc_var3": "|path|./other_path.enc|subpath|.subpath",
+				"enc_var1": "|path.enc|./path.enc|subpath|.subpath",
+				"enc_var2": "|path.enc|./path.enc|subpath|.other_subpath",
+				"enc_var3": "|path.enc|./other_path.enc|subpath|.subpath",
 			},
 			err: nil,
 		},
@@ -170,13 +170,15 @@ func (g *testGear) ResolveValue(c *Cfg) string {
 		return c.Value
 	}
 
+	pathStr := "|path|"
+
 	if c.encrypted {
 		// decrypt.File(c.Path, c.SubPath)
-		return "|enc|" + c.Path
+		pathStr = "|path.enc|"
 	}
 
 	if c.SubPath != "" {
-		return "|path|" + c.Path + "|subpath|" + c.SubPath
+		return pathStr + c.Path + "|subpath|" + c.SubPath
 	}
 
 	return "|path|" + c.Path
