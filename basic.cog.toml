@@ -4,6 +4,7 @@ name = "some_service"
 var = "var_value"
 other_var = "other_var_value"
 [qa]
-var.path = ["./path", ".subpath"]
+var.path = ["./test_files/manifest.yaml", "subpath"]
+other_var.path = ["./test_files/manifest.yaml", "subpath"]
 [qa.enc]
-enc_var.path = ["./path.enc", ".subpath"]
+enc_var.path = "./path.enc"

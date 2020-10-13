@@ -2,7 +2,8 @@ package cogs
 
 import (
 	"fmt"
-	"os"
+
+	"path"
 
 	"github.com/pelletier/go-toml"
 )
@@ -33,10 +34,11 @@ func (c Cfg) String() string {
 }`, c.Name, c.Value, c.Path, c.SubPath, c.encrypted)
 }
 
-type configMap map[string]Cfg
+type configMap map[string]*Cfg
 
-// Mapper is meant to define an object that returns the final string map to be used in a configuration
-type Mapper interface {
+// Resolver is meant to define an object that returns the final string map to be used in a configuration
+// resolving any paths and sub paths defined in the underling config map
+type Resolver interface {
 	ResolveMap(RawEnv) (map[string]string, error)
 	SetName(string)
 }
@@ -49,6 +51,8 @@ type Mapper interface {
 type Gear struct {
 	Name   string
 	cfgMap configMap
+	// filepath of file.cog.toml
+	filePath string
 }
 
 // SetName sets the gear name to the provided string
@@ -72,17 +76,17 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]string, error) {
 	// as well as Cfg objects with SubPaths present:
 	// ex: var.path = ["./path", ".subpath"]
 	// ---
-	pathGroup := make(map[string][]Cfg)
+	pathGroup := make(map[string][]*Cfg)
 
 	// 1. sort Cfgs by Path
 	for _, cfg := range g.cfgMap {
 		if cfg.Path != "" && !cfg.encrypted {
 			if _, ok := pathGroup[cfg.Path]; !ok {
-				pathGroup[cfg.Path] = []Cfg{}
+				pathGroup[cfg.Path] = []*Cfg{}
 			}
 			pathGroup[cfg.Path] = append(pathGroup[cfg.Path], cfg)
 		}
-		// TODO COGS-1657
+		// TODO POPS-520
 		if cfg.encrypted {
 			cfg.Value = "|enc|" + cfg.Path
 		}
@@ -90,13 +94,14 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]string, error) {
 
 	for path, cfgs := range pathGroup {
 		// 2. for each distinct Path: generate a Reader object
-		fileReader, err := os.Open(path)
+		cfgFilePath := g.getCfgFilePath(path)
+		fileBuf, err := readFile(cfgFilePath)
 		if err != nil {
 			return nil, err
 		}
 
 		// 3. create yaml visitor to handle SubPath strings
-		visitor, err := NewYamlVisitor(fileReader)
+		visitor, err := NewYamlVisitor(fileBuf)
 		if err != nil {
 			return nil, err
 		}
@@ -113,12 +118,16 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]string, error) {
 
 	// final output
 	cfgOut := make(map[string]string)
-	for _, cfg := range g.cfgMap {
-		cfgOut[cfg.Name] = cfg.Value
+	for cogName, cfg := range g.cfgMap {
+		cfgOut[cogName] = cfg.Value
 	}
 
 	return cfgOut, nil
 
+}
+
+func (g *Gear) getCfgFilePath(cfgPath string) string {
+	return path.Join(path.Dir(g.filePath), cfgPath)
 }
 
 // RawEnv is meant to represent the topmost untraversed level of a cog environment
@@ -131,11 +140,11 @@ func Generate(envName, cogFile string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return generate(envName, tree, &Gear{})
+	return generate(envName, tree, &Gear{filePath: cogFile})
 
 }
 
-func generate(envName string, tree *toml.Tree, gear Mapper) (map[string]string, error) {
+func generate(envName string, tree *toml.Tree, gear Resolver) (map[string]string, error) {
 	var ok bool
 	var err error
 
@@ -189,23 +198,23 @@ func parseEnv(env RawEnv) (cfgMap configMap, err error) {
 func decodeEnv(cfgMap configMap, env RawEnv) error {
 	var err error
 
-	for k, rawCfg := range env {
-		if _, ok := cfgMap[k]; ok {
-			return fmt.Errorf("%s: duplicate key present in env and env.enc", k)
+	for varName, rawCfg := range env {
+		if _, ok := cfgMap[varName]; ok {
+			return fmt.Errorf("%s: duplicate key present in env and env.enc", varName)
 		}
 		switch t := rawCfg.(type) {
 		case string:
-			cfgMap[k] = Cfg{
-				Name:  k,
+			cfgMap[varName] = &Cfg{
+				Name:  varName,
 				Value: t,
 			}
 		case map[string]interface{}:
-			cfgMap[k], err = parseCfgMap(t)
+			cfgMap[varName], err = parseCfgMap(varName, t)
 			if err != nil {
-				return fmt.Errorf("%s: %s", k, err)
+				return fmt.Errorf("%s: %s", varName, err)
 			}
 		default:
-			return fmt.Errorf("%s: %s is an unsupported type", k, t)
+			return fmt.Errorf("%s: %s is an unsupported type", varName, t)
 		}
 	}
 	return nil
@@ -238,7 +247,7 @@ func decodeEncrypted(cfgMap configMap, env RawEnv) error {
 }
 
 // parseCfg handles the cases when a config value maps to a non string object type
-func parseCfgMap(cfgVal map[string]interface{}) (Cfg, error) {
+func parseCfgMap(varName string, cfgVal map[string]interface{}) (*Cfg, error) {
 	var cfg Cfg
 	var ok bool
 
@@ -247,7 +256,7 @@ func parseCfgMap(cfgVal map[string]interface{}) (Cfg, error) {
 		case "name":
 			cfg.Name, ok = v.(string)
 			if !ok {
-				return cfg, fmt.Errorf(".name must be a string")
+				return &cfg, fmt.Errorf(".name must be a string")
 			}
 		case "path":
 			// a path key can map to two valid types:
@@ -262,35 +271,42 @@ func parseCfgMap(cfgVal map[string]interface{}) (Cfg, error) {
 			// cast to interface slice first since v.([]string) fails in one pass
 			pathSlice, ok := v.([]interface{})
 			if !ok {
-				return cfg, fmt.Errorf("path must be a string or array of strings")
+				return nil, fmt.Errorf("path must be a string or array of strings")
 			}
 			if len(pathSlice) != 2 {
-				return cfg, fmt.Errorf("path array must only contain two values mapping to path and subpath respectively")
+				return nil, fmt.Errorf("path array must only contain two values mapping to path and subpath respectively")
 			}
 			// filepath string
 			cfg.Path, ok = pathSlice[0].(string)
 			if !ok {
-				return cfg, fmt.Errorf("path must be a string or array of strings")
+				return nil, fmt.Errorf("path must be a string or array of strings")
 			}
 
 			// subpath string index used to traverse the data object once deserialized
 			cfg.SubPath, ok = pathSlice[1].(string)
 			if !ok {
-				return cfg, fmt.Errorf("path must be a string or array of strings")
+				return nil, fmt.Errorf("path must be a string or array of strings")
 			}
 		case "type":
 			cfg.readType = readType(k)
 			if err := cfg.readType.Validate(); err != nil {
-				return cfg, err
+				return nil, err
 			}
 
 		default:
-			return cfg, fmt.Errorf("%s is an unsupported key name", k)
-		}
-		if _, ok := cfgVal["type"]; ok {
-			cfg.readType = deferred
+			return nil, fmt.Errorf("%s is an unsupported key name", k)
 		}
 
 	}
-	return cfg, nil
+	// if readType was not specified:
+	if _, ok := cfgVal["type"]; !ok {
+		cfg.readType = deferred
+	}
+	// if name is not defined: `var = "value"`
+	// then set cfg.Name to the key name, "var" in this case
+	if _, ok := cfgVal["name"]; !ok {
+		cfg.Name = varName
+	}
+
+	return &cfg, nil
 }

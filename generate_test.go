@@ -138,7 +138,7 @@ func (g *testGear) ResolveMap(env RawEnv) (map[string]string, error) {
 // if Path resolves to a valid file the file byte value
 // is passed to a file reader object, attempting to serialize the contents of
 // the file if type is supported
-func (g *testGear) ResolveValue(c Cfg) string {
+func (g *testGear) ResolveValue(c *Cfg) string {
 	// if Path is empty or Value is non empty
 	if c.Path == "" || c.Value != "" {
 		return c.Value

@@ -2,9 +2,10 @@ package cogs
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/mikefarah/yq/v3/pkg/yqlib"
 	"gopkg.in/yaml.v3"
-	"io"
 )
 
 type readType string
@@ -28,22 +29,40 @@ type Queryable interface {
 	Get(queryPath string) (string, error)
 }
 
-// NewYamlVisitor returns a visitor object that satisfies the Queryable interface
-func NewYamlVisitor(r io.Reader) (*yamlVisitor, error) {
-	visitor := &yamlVisitor{}
-	buf := []byte{}
-
-	// read to buffer
-	if _, err := r.Read(buf); err != nil {
+// readFile takes a filepath and returns the byte value of the data within
+func readFile(filePath string) ([]byte, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
 		return nil, err
+	}
+	defer file.Close()
+
+	stats, statsErr := file.Stat()
+	if statsErr != nil {
+		return nil, statsErr
+	}
+
+	var size int64 = stats.Size()
+	bytes := make([]byte, size)
+
+	_, err = file.Read(bytes)
+
+	return bytes, nil
+
+}
+
+// NewYamlVisitor returns a visitor object that satisfies the Queryable interface
+func NewYamlVisitor(buf []byte) (*yamlVisitor, error) {
+	visitor := &yamlVisitor{
+		rootNode:    &yaml.Node{},
+		cachedNodes: make(map[string]map[string]string),
+		parser:      yqlib.NewYqLib(),
 	}
 
 	// deserialize to yaml.Node
-	if err := yaml.Unmarshal(buf, &visitor.rootNode); err != nil {
+	if err := yaml.Unmarshal(buf, visitor.rootNode); err != nil {
 		return nil, err
 	}
-
-	visitor.parser = yqlib.NewYqLib()
 
 	return visitor, nil
 }
@@ -57,19 +76,15 @@ type yamlVisitor struct {
 	parser      yqlib.YqLib
 }
 
-func (n *yamlVisitor) Get(cfg Cfg) (err error) {
+func (n *yamlVisitor) Get(cfg *Cfg) (err error) {
 	var ok bool
 
 	if cfg.SubPath == "" {
-		nodeCtx, err := n.get(cfg.Name)
+		node, err := n.get(cfg.Name)
 		if err != nil {
 			return err
 		}
-		// a top level value should be a string to string k/v pair
-		if len(nodeCtx) != 1 {
-			return fmt.Errorf("returned non signular result for %s", cfg)
-		}
-		err = nodeCtx[0].Node.Decode(&cfg.Value)
+		err = node.Decode(&cfg.Value)
 		if err != nil {
 			return err
 		}
@@ -85,17 +100,10 @@ func (n *yamlVisitor) Get(cfg Cfg) (err error) {
 		return nil
 	}
 
-	nodeCtx, err := n.get(cfg.SubPath)
+	node, err := n.get(cfg.SubPath)
 	if err != nil {
 		return err
 	}
-
-	// should only match a single node
-	if len(nodeCtx) != 1 {
-		return fmt.Errorf("returned non signular result for %s", cfg)
-	}
-
-	node := nodeCtx[0].Node
 
 	// nodes with readType of deferred should be a string to string k/v pair
 	if node.Kind != yaml.MappingNode || cfg.readType != deferred {
@@ -103,7 +111,7 @@ func (n *yamlVisitor) Get(cfg Cfg) (err error) {
 	}
 
 	// for now only support string maps
-	// TODO handle dotenv readType
+	// TODO handle dotenv readType - P0PS-755
 	cachedMap := make(map[string]string)
 	err = node.Decode(&cachedMap)
 	if err != nil {
@@ -122,11 +130,20 @@ func (n *yamlVisitor) Get(cfg Cfg) (err error) {
 
 }
 
-func (n *yamlVisitor) get(path string) ([]*yqlib.NodeContext, error) {
-	return n.parser.Get(n.rootNode, path)
+func (n *yamlVisitor) get(subPath string) (*yaml.Node, error) {
+	nodeCtx, err := n.parser.Get(n.rootNode, subPath)
+	if err != nil {
+		return nil, err
+	}
+	// should only match a single node
+	if len(nodeCtx) != 1 {
+		return nil, fmt.Errorf("returned non signular result for path '%s'", subPath)
+	}
+	return nodeCtx[0].Node, nil
 }
 
 var kindStr = map[yaml.Kind]string{
+	0:                 "None",
 	yaml.DocumentNode: "DocumentNode",
 	yaml.SequenceNode: "SequenceNode",
 	yaml.MappingNode:  "MappingNode",

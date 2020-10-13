@@ -7,6 +7,7 @@ import (
 
 	"github.com/bestowinc/cogs"
 	"github.com/docopt/docopt-go"
+	logging "gopkg.in/op/go-logging.v1"
 )
 
 func main() {
@@ -19,6 +20,8 @@ func main() {
 		Env      string
 		File     string `docopt:"<cog-file>"`
 	}
+
+	logging.SetLevel(logging.WARNING, "yq")
 
 	opts.Bind(&conf)
 	switch {

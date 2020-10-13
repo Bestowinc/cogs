@@ -4,7 +4,6 @@ go 1.14
 
 require (
 	cloud.google.com/go v0.68.0 // indirect
-	cloud.google.com/go/bigquery v1.8.0 // indirect
 	github.com/Azure/azure-sdk-for-go v46.4.0+incompatible // indirect
 	github.com/Azure/go-autorest/autorest v0.11.10 // indirect
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.3 // indirect
@@ -12,7 +11,7 @@ require (
 	github.com/Azure/go-autorest/autorest/validation v0.3.0 // indirect
 	github.com/aws/aws-sdk-go v1.35.7 // indirect
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
-	github.com/fatih/color v1.9.0 // indirect
+	github.com/frankban/quicktest v1.11.1 // indirect
 	github.com/goccy/go-yaml v1.8.2 // indirect
 	github.com/golang/snappy v0.0.2 // indirect
 	github.com/google/go-cmp v0.5.2
@@ -21,7 +20,6 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.6.7 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
 	github.com/howeyc/gopass v0.0.0-20190910152052-7cb4b85ec19c // indirect
-	github.com/konsorten/go-windows-terminal-sequences v1.0.3 // indirect
 	github.com/lib/pq v1.8.0 // indirect
 	github.com/mattn/go-colorable v0.1.8 // indirect
 	github.com/mikefarah/yq/v3 v3.0.0-20201008213842-996ee0b4336d
@@ -36,12 +34,11 @@ require (
 	golang.org/x/crypto v0.0.0-20201012173705-84dcc777aaee // indirect
 	golang.org/x/net v0.0.0-20201010224723-4f7140c49acb // indirect
 	golang.org/x/sys v0.0.0-20201009025420-dfb3f7c4e634 // indirect
-	golang.org/x/text v0.3.3 // indirect
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e // indirect
 	google.golang.org/genproto v0.0.0-20201012135029-0c95dc0d88e8 // indirect
 	google.golang.org/grpc v1.33.0 // indirect
-	google.golang.org/protobuf v1.25.0 // indirect
 	gopkg.in/ini.v1 v1.62.0 // indirect
+	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473
 	gopkg.in/square/go-jose.v2 v2.5.1 // indirect
 	gopkg.in/yaml.v2 v2.3.0
 	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776

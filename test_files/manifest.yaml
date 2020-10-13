@@ -1,0 +1,3 @@
+subpath:
+  var: "value"
+  other_var: "other_value"
