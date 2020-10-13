@@ -4,7 +4,7 @@ go 1.14
 
 require (
 	cloud.google.com/go v0.68.0 // indirect
-	github.com/Azure/azure-sdk-for-go v46.4.0+incompatible // indirect
+	github.com/Azure/azure-sdk-for-go v47.0.0+incompatible // indirect
 	github.com/Azure/go-autorest/autorest v0.11.10 // indirect
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.3 // indirect
 	github.com/Azure/go-autorest/autorest/to v0.4.0 // indirect
@@ -33,13 +33,13 @@ require (
 	go.opencensus.io v0.22.5 // indirect
 	golang.org/x/crypto v0.0.0-20201012173705-84dcc777aaee // indirect
 	golang.org/x/net v0.0.0-20201010224723-4f7140c49acb // indirect
-	golang.org/x/sys v0.0.0-20201009025420-dfb3f7c4e634 // indirect
+	golang.org/x/sys v0.0.0-20201013132646-2da7054afaeb // indirect
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e // indirect
-	google.golang.org/genproto v0.0.0-20201012135029-0c95dc0d88e8 // indirect
+	google.golang.org/genproto v0.0.0-20201013134114-7f9ee70cb474 // indirect
 	google.golang.org/grpc v1.33.0 // indirect
 	gopkg.in/ini.v1 v1.62.0 // indirect
 	gopkg.in/op/go-logging.v1 v1.0.0-20160211212156-b2cb9fa56473
 	gopkg.in/square/go-jose.v2 v2.5.1 // indirect
-	gopkg.in/yaml.v2 v2.3.0
+	gopkg.in/yaml.v2 v2.3.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776
 )
