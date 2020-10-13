@@ -197,29 +197,50 @@ func parseEnv(env RawEnv) (cfgMap configMap, err error) {
 
 func decodeEnv(cfgMap configMap, env RawEnv) error {
 	var err error
+	var baseCfg Cfg
 
-	for varName, rawCfg := range env {
+	// TODO refactor so parseCfgMap can be called
+	if pathValue, ok := env["path"]; ok {
+		fmt.Println("decoding")
+		if err = decodePath(pathValue, &baseCfg, nil); err != nil {
+			return err
+		}
+	}
+	fmt.Println("baseCfg: ", baseCfg)
+
+	rawVars, ok := env["vars"]
+	if !ok {
+		return nil
+	}
+	vars, ok := rawVars.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf(".vars must map to a table")
+	}
+
+	// check for dubplicate keys for env.vars and env.enc.vars
+	for varName, rawVar := range vars {
 		if _, ok := cfgMap[varName]; ok {
 			return fmt.Errorf("%s: duplicate key present in env and env.enc", varName)
 		}
-		switch t := rawCfg.(type) {
+		switch cfgType := rawVar.(type) {
 		case string:
 			cfgMap[varName] = &Cfg{
 				Name:  varName,
-				Value: t,
+				Value: cfgType,
 			}
 		case map[string]interface{}:
-			cfgMap[varName], err = parseCfgMap(varName, t)
+			cfgMap[varName], err = parseCfgMap(varName, &baseCfg, cfgType)
 			if err != nil {
 				return fmt.Errorf("%s: %s", varName, err)
 			}
 		default:
-			return fmt.Errorf("%s: %s is an unsupported type", varName, t)
+			return fmt.Errorf("%s: %s is an unsupported type", varName, cfgType)
 		}
 	}
 	return nil
 }
 
+// convenience function for passing env.enc variables to decodeEnv
 func decodeEncrypted(cfgMap configMap, env RawEnv) error {
 	// treat enc key as a nested configMap
 	enc, ok := env["enc"]
@@ -236,18 +257,17 @@ func decodeEncrypted(cfgMap configMap, env RawEnv) error {
 	if err != nil {
 		return err
 	}
+	// since env.enc is always called first, mark all output Cfgs as encrypted
 	for key, cfg := range cfgMap {
 		cfg.encrypted = true
 		cfgMap[key] = cfg
 	}
-	// remove env map now that it is parsed
-	delete(env, "enc")
 
 	return nil
 }
 
 // parseCfg handles the cases when a config value maps to a non string object type
-func parseCfgMap(varName string, cfgVal map[string]interface{}) (*Cfg, error) {
+func parseCfgMap(varName string, baseCfg *Cfg, cfgVal map[string]interface{}) (*Cfg, error) {
 	var cfg Cfg
 	var ok bool
 
@@ -259,33 +279,8 @@ func parseCfgMap(varName string, cfgVal map[string]interface{}) (*Cfg, error) {
 				return &cfg, fmt.Errorf(".name must be a string")
 			}
 		case "path":
-			// a path key can map to two valid types:
-			// 1. path value is a single string mapping to filepath
-			// 2. path value  is a two index slice mapping to [filepath, subpath] respectively
-
-			// singular filepath string
-			cfg.Path, ok = v.(string)
-			if ok {
-				continue
-			}
-			// cast to interface slice first since v.([]string) fails in one pass
-			pathSlice, ok := v.([]interface{})
-			if !ok {
-				return nil, fmt.Errorf("path must be a string or array of strings")
-			}
-			if len(pathSlice) != 2 {
-				return nil, fmt.Errorf("path array must only contain two values mapping to path and subpath respectively")
-			}
-			// filepath string
-			cfg.Path, ok = pathSlice[0].(string)
-			if !ok {
-				return nil, fmt.Errorf("path must be a string or array of strings")
-			}
-
-			// subpath string index used to traverse the data object once deserialized
-			cfg.SubPath, ok = pathSlice[1].(string)
-			if !ok {
-				return nil, fmt.Errorf("path must be a string or array of strings")
+			if err := decodePath(v, &cfg, baseCfg); err != nil {
+				return nil, fmt.Errorf("%s.path: %s", varName, err)
 			}
 		case "type":
 			cfg.readType = readType(k)
@@ -309,4 +304,66 @@ func parseCfgMap(varName string, cfgVal map[string]interface{}) (*Cfg, error) {
 	}
 
 	return &cfg, nil
+}
+
+// decodePath decodes a value of v into a given Cfg pointer
+// a path key can map to four valid types:
+// 1. path value is a single string mapping to filepath
+// 2. path value  is an empty slice, thus baseCfg values will be inherited
+// 3. path value  is a two index slice with either index possibly holding an empty slice or string value:
+// -  [[], subpath] - path will be inherited from baseCfg if present
+// -  [path, []] - subpath will be inherited from baseCfg if present
+// -  [path, subpath] - nothing will be inherited as both indices hold strings
+func decodePath(v interface{}, cfg *Cfg, baseCfg *Cfg) error {
+	var ok bool
+	var baseCfgSlice []string
+	// map path indices to respective Cfg struct
+	if baseCfg != nil {
+		baseCfgSlice = []string{baseCfg.Path, baseCfg.SubPath}
+	} else {
+		baseCfgSlice = []string{"", ""}
+	}
+
+	// singular filepath string
+	cfg.Path, ok = v.(string)
+	if ok {
+		return nil
+	}
+	// cast to interface slice first since v.([]string) fails in one pass
+	pathSlice, ok := v.([]interface{})
+	if !ok {
+		return fmt.Errorf("path must be an array, slice of strings/empty arrays, or an empty array")
+	}
+	// if path maps to an empty slice: var.path = []
+	if len(pathSlice) == 0 && baseCfg != nil {
+		cfg.Path = baseCfg.Path
+		cfg.SubPath = baseCfg.SubPath
+		return nil
+	}
+	if len(pathSlice) != 2 {
+		return fmt.Errorf("path array must have a length of two, providing path and subpath respectively")
+	}
+
+	decodedSlice := []string{"", ""}
+	for i, v := range pathSlice {
+		str, ok := v.(string)
+		if ok {
+			decodedSlice[i] = str
+			continue
+		}
+		slice, ok := v.([]interface{})
+		if !ok {
+			return fmt.Errorf("path must be a string or array of strings: %T", slice)
+		}
+		if len(slice) != 0 {
+			return fmt.Errorf("array in path[%d] must be empty", i)
+		}
+		// inherit the respective path attribute or assign empty string
+		decodedSlice[i] = baseCfgSlice[i]
+
+	}
+	cfg.Path = decodedSlice[0]
+	cfg.SubPath = decodedSlice[1]
+	fmt.Println(cfg)
+	return nil
 }

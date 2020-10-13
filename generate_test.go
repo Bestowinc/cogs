@@ -45,6 +45,20 @@ func TestGenerate(t *testing.T) {
 			err: nil,
 		},
 		{
+			name: "ConfigWithInheritedPath",
+			env:  "path_env",
+			toml: basicCogToml,
+			config: map[string]string{
+				"var1":     "|path|./path|subpath|.subpath",
+				"var2":     "|path|./path|subpath|.other_subpath",
+				"var3":     "|path|./other_path|subpath|.subpath",
+				"enc_var1": "|path|./path.enc|subpath|.subpath",
+				"enc_var2": "|path|./path.enc|subpath|.other_subpath",
+				"enc_var3": "|path|./other_path.enc|subpath|.subpath",
+			},
+			err: nil,
+		},
+		{
 			name:   "DuplicateKeyInEnc/Error",
 			env:    "local",
 			toml:   errCogToml,
@@ -56,7 +70,7 @@ func TestGenerate(t *testing.T) {
 			env:    "qa",
 			toml:   errCogToml,
 			config: nil,
-			err:    errors.New("qa: var: path array must only contain two values mapping to path and subpath respectively"),
+			err:    errors.New("qa: var: var.path: path array must have a length of two, providing path and subpath respectively"),
 		},
 	}
 	for _, tc := range testCases {
@@ -83,24 +97,36 @@ var (
 	basicCogToml = `
 name = "basicCogToml"
 
-[local]
+[local.vars]
 var = "var_value"
 other_var = "other_var_value"
-[qa]
+[qa.vars]
 var.path = ["./path", ".subpath"]
-[qa.enc]
+[qa.enc.vars]
 enc_var.path = ["./path.enc", ".subpath"]
+[path_env]
+path = ["./path", ".subpath"]
+[path_env.vars]
+var1.path = []
+var2.path = [[], ".other_subpath"]
+var3.path = ["./other_path", []]
+[path_env.enc]
+path = ["./path.enc", ".subpath"]
+[path_env.enc.vars]
+enc_var1.path = []
+enc_var2.path = [[], ".other_subpath"]
+enc_var3.path = ["./other_path.enc", []]
 `
 	errCogToml = `
 name = "errCogToml"
 
-[local]
+[local.vars]
 var = "var_value"
-[local.enc]
+[local.enc.vars]
 var = "other_var_value"
-[qa]
+[qa.vars]
 var.path = ["./path", ".subpath", "err_index"]
-[qa.enc]
+[qa.enc.vars]
 enc_var.path = ["./path.enc", ".subpath"]
 `
 )
