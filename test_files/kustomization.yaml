@@ -1,0 +1,6 @@
+configMapGenerator:
+  - name: basic-environment
+    literals:
+      - VAR_1=false
+      - VAR2=value
+

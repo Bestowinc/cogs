@@ -12,3 +12,10 @@ var3.path = [[], "other_subpath"]
 some_var.name = "some_name"
 [qa.enc.vars]
 enc_var.path = "./path.enc"
+# example using kubernetes kustomize
+[kustomize]
+path = ["./test_files/kustomization.yaml", "configMapGenerator.[0].literals"]
+[kustomize.vars]
+var1 = {path = [], name = "VAR_1"}
+var2 = {path = [], name = "VAR_2"}
+

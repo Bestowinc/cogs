@@ -25,8 +25,9 @@ func (t readType) Validate() error {
 	}
 }
 
+// Queryable allows a query path to return the underlying value for a given visitor
 type Queryable interface {
-	Get(queryPath string) (string, error)
+	SetValue(*Cfg) error
 }
 
 // readFile takes a filepath and returns the byte value of the data within
@@ -52,7 +53,7 @@ func readFile(filePath string) ([]byte, error) {
 }
 
 // NewYamlVisitor returns a visitor object that satisfies the Queryable interface
-func NewYamlVisitor(buf []byte) (*yamlVisitor, error) {
+func NewYamlVisitor(buf []byte) (Queryable, error) {
 	visitor := &yamlVisitor{
 		rootNode:    &yaml.Node{},
 		cachedNodes: make(map[string]map[string]string),
@@ -67,16 +68,14 @@ func NewYamlVisitor(buf []byte) (*yamlVisitor, error) {
 	return visitor, nil
 }
 
-type cachedNode struct {
-	readType readType
-}
 type yamlVisitor struct {
 	rootNode    *yaml.Node
 	cachedNodes map[string]map[string]string
 	parser      yqlib.YqLib
 }
 
-func (n *yamlVisitor) Get(cfg *Cfg) (err error) {
+// SetValue assigns the Value for a given Cfg using the existing Cfg.Path and Cfg.SubPath
+func (n *yamlVisitor) SetValue(cfg *Cfg) (err error) {
 	var ok bool
 
 	if cfg.SubPath == "" {

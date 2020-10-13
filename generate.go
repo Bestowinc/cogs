@@ -108,7 +108,7 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]string, error) {
 
 		// 4. traverse every Path and possible SubPath retrieving the Cfg.Values associated with it
 		for _, cfg := range cfgs {
-			err := visitor.Get(cfg)
+			err := visitor.SetValue(cfg)
 			if err != nil {
 				return nil, err
 			}
@@ -201,12 +201,10 @@ func decodeEnv(cfgMap configMap, env RawEnv) error {
 
 	// TODO refactor so parseCfgMap can be called
 	if pathValue, ok := env["path"]; ok {
-		fmt.Println("decoding")
 		if err = decodePath(pathValue, &baseCfg, nil); err != nil {
 			return err
 		}
 	}
-	fmt.Println("baseCfg: ", baseCfg)
 
 	rawVars, ok := env["vars"]
 	if !ok {
@@ -364,6 +362,5 @@ func decodePath(v interface{}, cfg *Cfg, baseCfg *Cfg) error {
 	}
 	cfg.Path = decodedSlice[0]
 	cfg.SubPath = decodedSlice[1]
-	fmt.Println(cfg)
 	return nil
 }
