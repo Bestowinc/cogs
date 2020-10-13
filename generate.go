@@ -77,6 +77,7 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]string, error) {
 	// ex: var.path = ["./path", ".subpath"]
 	// ---
 	pathGroup := make(map[string][]*Cfg)
+	encPathGroup := make(map[string][]*Cfg)
 
 	// 1. sort Cfgs by Path
 	for _, cfg := range g.cfgMap {
@@ -86,9 +87,12 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]string, error) {
 			}
 			pathGroup[cfg.Path] = append(pathGroup[cfg.Path], cfg)
 		}
-		// TODO POPS-520
+
 		if cfg.encrypted {
-			cfg.Value = "|enc|" + cfg.Path
+			if _, ok := encPathGroup[cfg.Path]; !ok {
+				encPathGroup[cfg.Path] = []*Cfg{}
+			}
+			encPathGroup[cfg.Path] = append(encPathGroup[cfg.Path], cfg)
 		}
 	}
 
@@ -113,6 +117,22 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]string, error) {
 				return nil, err
 			}
 
+		}
+	}
+
+	for path, cfgs := range encPathGroup {
+		cfgFilePath := g.getCfgFilePath(path)
+		data, err := decryptFile(cfgFilePath)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, cfg := range cfgs {
+			value, ok := data[cfg.Name]
+			if !ok {
+				return nil, fmt.Errorf("unable to find %s", cfg)
+			}
+			cfg.Value = value
 		}
 	}
 
