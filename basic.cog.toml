@@ -10,11 +10,10 @@ path = ["./test_files/manifest.yaml", "subpath"]
 var1.path = ["./test_files/manifest.yaml", "subpath"]
 var2.path = []
 var3.path = [[], "other_subpath"]
-some_var.name = "some_name"
+some_var.name = "some_name" #dangling variable should return {"some_var": ""} since only name override was defined
 [qa.enc.vars]
-enc_var.path = "./path.enc"
+enc_var.path = "./test_files/test.enc.yaml"
 
-# TODO example using kubernetes kustomize
 [kustomize]
 path = ["./test_files/kustomization.yaml", "configMapGenerator.[0].literals"]
 type = "dotenv"
