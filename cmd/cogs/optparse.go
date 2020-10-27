@@ -17,27 +17,27 @@ func ifErr(err error) {
 	}
 }
 
-func getRawValue(cfgMap map[string]string) string {
+func getRawValue(cfgMap map[string]interface{}) string {
 	output := ""
 	// for now, no delimiter
 	for _, v := range cfgMap {
-		output = output + v
+		output = output + fmt.Sprintf("%s", v)
 	}
 	return output
 
 }
 
-func upperKeys(cfgMap map[string]string) map[string]string {
+func upperKeys(cfgMap map[string]interface{}) map[string]string {
 	newCfgMap := make(map[string]string)
 	for k, v := range cfgMap {
-		newCfgMap[strings.ToUpper(k)] = v
+		newCfgMap[strings.ToUpper(k)] = fmt.Sprintf("%s", v)
 	}
 	return newCfgMap
 }
 
 // exclude produces a laundered map with exclusionList values misssing
-func exclude(exclusionList []string, cfgMap map[string]string) map[string]string {
-	newCfgMap := make(map[string]string)
+func exclude(exclusionList []string, cfgMap map[string]interface{}) map[string]interface{} {
+	newCfgMap := make(map[string]interface{})
 	for k, _ := range cfgMap {
 		if inList(k, exclusionList) {
 			continue

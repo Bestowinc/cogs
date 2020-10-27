@@ -15,17 +15,20 @@ import (
 type readType string
 
 const (
-	readDotenv readType = "dotenv"
-	readJson   readType = "json"
-	deferred   readType = "" // defer file config type to filename suffix
+	rDotenv      readType = "dotenv"
+	rJson        readType = "json"
+	rJsonComplex readType = "json{}"
+	deferred     readType = "" // defer file config type to filename suffix
 )
 
 // Validate ensures that a string is a valid readType enum
 func (t readType) Validate() error {
 	switch t {
-	case readDotenv:
+	case rDotenv:
 		return nil
-	case readJson:
+	case rJson:
+		return nil
+	case rJsonComplex:
 		return nil
 	default:
 		return fmt.Errorf("%s is an invalid cfgType", string(t))
@@ -34,10 +37,12 @@ func (t readType) Validate() error {
 
 func (t readType) String() string {
 	switch t {
-	case readDotenv:
-		return string(readDotenv)
-	case readJson:
-		return string(readJson)
+	case rDotenv:
+		return string(rDotenv)
+	case rJson:
+		return string(rJson)
+	case rJsonComplex:
+		return "complex json"
 	case deferred:
 		return "deferred"
 	default:
@@ -174,21 +179,29 @@ func (n *yamlVisitor) SetValue(cfg *Cfg) (err error) {
 			cfg.Name, kindStr[node.Kind], cfg.readType)
 	}
 
-	// for now only support string maps
-	// TODO handle dotenv readType - P0PS-755
 	cachedMap := make(map[string]string)
 
 	switch cfg.readType {
-	case readDotenv:
+	case rDotenv:
 		cachedMap, err = visitDotenv(node)
 		if err != nil {
 			return err
 		}
-	case readJson:
+	case rJson:
 		cachedMap, err = visitJson(node)
 		if err != nil {
 			return err
 		}
+	// do not cache complex maps for now
+	case rJsonComplex:
+		complexMap := make(map[string]interface{})
+		err = node.Decode(&complexMap)
+		if err != nil {
+			return err
+		}
+		cfg.ComplexValue = complexMap
+		// fmt.Printf("complex: %s\n", complexMap)
+		return nil
 	case deferred:
 		err = node.Decode(&cachedMap)
 		if err != nil {
@@ -254,3 +267,17 @@ func visitJson(node *yaml.Node) (map[string]string, error) {
 	}
 	return envMap, nil
 }
+
+// func visitJsonComplex(node *yaml.Node) (map[string]interface{}, error) {
+//     var strEnv string
+
+//     if err := node.Decode(&strEnv); err != nil {
+//         return nil, fmt.Errorf("Unable to decode node kind: %s to complex JSON format", kindStr[node.Kind])
+//     }
+//     envMap := make(map[string]interface{})
+//     err := json.Unmarshal([]byte(strEnv), &envMap)
+//     if err != nil {
+//         return nil, err
+//     }
+//     return envMap, nil
+// }

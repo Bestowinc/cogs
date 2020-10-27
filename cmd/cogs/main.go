@@ -51,7 +51,7 @@ Options:
 	cogs.EnvSubst = conf.EnvSubst
 
 	// filterCfgMap retains only key names passed to --keys
-	filterCfgMap := func(cfgMap map[string]string) (map[string]string, error) {
+	filterCfgMap := func(cfgMap map[string]interface{}) (map[string]interface{}, error) {
 
 		// --not runs before --keys!
 		// make sure to avoid --not=key_name --key=key_name, ya dingus!
@@ -65,7 +65,7 @@ Options:
 		}
 
 		keyList := strings.Split(conf.Keys, ",")
-		newCfgMap := make(map[string]string)
+		newCfgMap := make(map[string]interface{})
 		for _, key := range keyList {
 			var ok bool
 			newCfgMap[key], ok = cfgMap[key]

@@ -20,9 +20,10 @@ var EnvSubst bool = false
 // Cfg holds all the data needed to generate one string key value pair
 type Cfg struct {
 	// Defaults to key name unless explicitly declared
-	Name  string
-	Value string
-	Path  string
+	Name         string
+	Value        string
+	ComplexValue interface{}
+	Path         string
 	// default should be Cfg key name
 	SubPath   string
 	encrypted bool
@@ -45,7 +46,7 @@ type configMap map[string]*Cfg
 // Resolver is meant to define an object that returns the final string map to be used in a configuration
 // resolving any paths and sub paths defined in the underling config map
 type Resolver interface {
-	ResolveMap(RawEnv) (map[string]string, error)
+	ResolveMap(RawEnv) (map[string]interface{}, error)
 	SetName(string)
 }
 
@@ -68,7 +69,7 @@ func (g *Gear) SetName(name string) {
 
 // ResolveMap outputs the flat associative string, resolving potential filepath pointers
 // held by Cfg objects by calling the .ResolveValue() method
-func (g *Gear) ResolveMap(env RawEnv) (map[string]string, error) {
+func (g *Gear) ResolveMap(env RawEnv) (map[string]interface{}, error) {
 	var err error
 
 	g.cfgMap, err = parseEnv(env)
@@ -130,9 +131,14 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]string, error) {
 	}
 
 	// final output
-	cfgOut := make(map[string]string)
+	cfgOut := make(map[string]interface{})
 	for cogName, cfg := range g.cfgMap {
-		cfgOut[cogName] = cfg.Value
+		if cfg.ComplexValue != nil {
+			fmt.Printf("complex value: %s\n", cfg.ComplexValue)
+			cfgOut[cogName] = cfg.ComplexValue
+		} else {
+			cfgOut[cogName] = cfg.Value
+		}
 	}
 
 	return cfgOut, nil
@@ -155,7 +161,7 @@ func (g *Gear) getCfgFilePath(cfgPath string) string {
 type RawEnv map[string]interface{}
 
 // Generate is a top level command that takes an env argument and cogfilepath to return a string map
-func Generate(envName, cogFile string) (map[string]string, error) {
+func Generate(envName, cogFile string) (map[string]interface{}, error) {
 	var tree *toml.Tree
 	var err error
 
@@ -179,7 +185,7 @@ func Generate(envName, cogFile string) (map[string]string, error) {
 
 }
 
-func generate(envName string, tree *toml.Tree, gear Resolver) (map[string]string, error) {
+func generate(envName string, tree *toml.Tree, gear Resolver) (map[string]interface{}, error) {
 	var ok bool
 	var err error
 
