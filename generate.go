@@ -134,7 +134,6 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]interface{}, error) {
 	cfgOut := make(map[string]interface{})
 	for cogName, cfg := range g.cfgMap {
 		if cfg.ComplexValue != nil {
-			fmt.Printf("complex value: %s\n", cfg.ComplexValue)
 			cfgOut[cogName] = cfg.ComplexValue
 		} else {
 			cfgOut[cogName] = cfg.Value

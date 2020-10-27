@@ -18,6 +18,7 @@ const (
 	rDotenv      readType = "dotenv"
 	rJson        readType = "json"
 	rJsonComplex readType = "json{}"
+	rWhole       readType = "whole"
 	deferred     readType = "" // defer file config type to filename suffix
 )
 
@@ -29,6 +30,8 @@ func (t readType) Validate() error {
 	case rJson:
 		return nil
 	case rJsonComplex:
+		return nil
+	case rWhole:
 		return nil
 	default:
 		return fmt.Errorf("%s is an invalid cfgType", string(t))
@@ -42,6 +45,8 @@ func (t readType) String() string {
 	case rJson:
 		return string(rJson)
 	case rJsonComplex:
+		return "complex json"
+	case rWhole:
 		return "complex json"
 	case deferred:
 		return "deferred"
@@ -147,16 +152,11 @@ type yamlVisitor struct {
 func (n *yamlVisitor) SetValue(cfg *Cfg) (err error) {
 	var ok bool
 
-	if cfg.SubPath == "" {
-		node, err := n.get(cfg.Name)
-		if err != nil {
+	// if readType is rWhole then decode the entire root node
+	if cfg.readType == rWhole {
+		if err = n.rootNode.Decode(&cfg.ComplexValue); err != nil {
 			return err
 		}
-		err = node.Decode(&cfg.Value)
-		if err != nil {
-			return err
-		}
-
 		return nil
 	}
 
@@ -200,7 +200,6 @@ func (n *yamlVisitor) SetValue(cfg *Cfg) (err error) {
 			return err
 		}
 		cfg.ComplexValue = complexMap
-		// fmt.Printf("complex: %s\n", complexMap)
 		return nil
 	case deferred:
 		err = node.Decode(&cachedMap)
