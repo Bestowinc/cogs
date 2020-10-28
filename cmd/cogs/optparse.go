@@ -38,7 +38,7 @@ func upperKeys(cfgMap map[string]interface{}) map[string]string {
 // exclude produces a laundered map with exclusionList values misssing
 func exclude(exclusionList []string, cfgMap map[string]interface{}) map[string]interface{} {
 	newCfgMap := make(map[string]interface{})
-	for k, _ := range cfgMap {
+	for k := range cfgMap {
 		if inList(k, exclusionList) {
 			continue
 		}

@@ -16,8 +16,8 @@ type readType string
 
 const (
 	rDotenv      readType = "dotenv"
-	rJson        readType = "json"
-	rJsonComplex readType = "json{}"
+	rJSON        readType = "json"
+	rJSONComplex readType = "json{}"
 	rWhole       readType = "whole"
 	deferred     readType = "" // defer file config type to filename suffix
 )
@@ -27,9 +27,9 @@ func (t readType) Validate() error {
 	switch t {
 	case rDotenv:
 		return nil
-	case rJson:
+	case rJSON:
 		return nil
-	case rJsonComplex:
+	case rJSONComplex:
 		return nil
 	case rWhole:
 		return nil
@@ -42,9 +42,9 @@ func (t readType) String() string {
 	switch t {
 	case rDotenv:
 		return string(rDotenv)
-	case rJson:
-		return string(rJson)
-	case rJsonComplex:
+	case rJSON:
+		return string(rJSON)
+	case rJSONComplex:
 		return "complex json"
 	case rWhole:
 		return "complex json"
@@ -106,9 +106,9 @@ var kindStr = map[yaml.Kind]string{
 	yaml.AliasNode:    "AliasNode",
 }
 
-// NewJsonVisitor returns a visitor object that satisfies the Queryable interface
+// NewJSONVisitor returns a visitor object that satisfies the Queryable interface
 // attempting to turn a supposed JSON byte slice into a *yaml.Node object
-func NewJsonVisitor(buf []byte) (Queryable, error) {
+func NewJSONVisitor(buf []byte) (Queryable, error) {
 	visitor := &yamlVisitor{
 		rootNode:    &yaml.Node{},
 		cachedNodes: make(map[string]map[string]string),
@@ -187,13 +187,13 @@ func (n *yamlVisitor) SetValue(cfg *Cfg) (err error) {
 		if err != nil {
 			return err
 		}
-	case rJson:
-		cachedMap, err = visitJson(node)
+	case rJSON:
+		cachedMap, err = visitJSON(node)
 		if err != nil {
 			return err
 		}
 	// do not cache complex maps for now
-	case rJsonComplex:
+	case rJSONComplex:
 		complexMap := make(map[string]interface{})
 		err = node.Decode(&complexMap)
 		if err != nil {
@@ -249,7 +249,7 @@ func visitDotenv(node *yaml.Node) (map[string]string, error) {
 	return envMap, nil
 }
 
-func visitJson(node *yaml.Node) (map[string]string, error) {
+func visitJSON(node *yaml.Node) (map[string]string, error) {
 	var strEnv string
 
 	if err := node.Decode(&strEnv); err != nil {
