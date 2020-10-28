@@ -17,9 +17,9 @@ type readType string
 const (
 	rDotenv      readType = "dotenv"
 	rJSON        readType = "json"
-	rJSONComplex readType = "json{}"
-	rWhole       readType = "whole"
-	deferred     readType = "" // defer file config type to filename suffix
+	rJSONComplex readType = "json{}" // complex json key value pair: {"k":{"v1":[],"v2":[]}}
+	rWhole       readType = "whole"  // indicates to associate the entirety of a file to the given key name
+	deferred     readType = ""       // defer file config type to filename suffix
 )
 
 // Validate ensures that a string is a valid readType enum
@@ -33,7 +33,7 @@ func (t readType) Validate() error {
 		return nil
 	case rWhole:
 		return nil
-	default:
+	default: // deferred readType should not be validated
 		return fmt.Errorf("%s is an invalid cfgType", string(t))
 	}
 }
@@ -47,7 +47,7 @@ func (t readType) String() string {
 	case rJSONComplex:
 		return "complex json"
 	case rWhole:
-		return "complex json"
+		return "whole file"
 	case deferred:
 		return "deferred"
 	default:
@@ -152,7 +152,7 @@ type yamlVisitor struct {
 func (n *yamlVisitor) SetValue(cfg *Cfg) (err error) {
 	var ok bool
 
-	// if readType is rWhole then decode the entire root node
+	// rWhole readType grabs the entire rootNode and assigns cfg.ComplexValue to it
 	if cfg.readType == rWhole {
 		if err = n.rootNode.Decode(&cfg.ComplexValue); err != nil {
 			return err
@@ -160,6 +160,7 @@ func (n *yamlVisitor) SetValue(cfg *Cfg) (err error) {
 		return nil
 	}
 
+	// check if cfg.SubPath value has been used in a previous SetValue call
 	if valMap, ok := n.cachedNodes[cfg.SubPath]; ok {
 		cfg.Value, ok = valMap[cfg.Name]
 		if !ok {
@@ -266,17 +267,3 @@ func visitJSON(node *yaml.Node) (map[string]string, error) {
 	}
 	return envMap, nil
 }
-
-// func visitJsonComplex(node *yaml.Node) (map[string]interface{}, error) {
-//     var strEnv string
-
-//     if err := node.Decode(&strEnv); err != nil {
-//         return nil, fmt.Errorf("Unable to decode node kind: %s to complex JSON format", kindStr[node.Kind])
-//     }
-//     envMap := make(map[string]interface{})
-//     err := json.Unmarshal([]byte(strEnv), &envMap)
-//     if err != nil {
-//         return nil, err
-//     }
-//     return envMap, nil
-// }

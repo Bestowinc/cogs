@@ -27,6 +27,8 @@ func getRawValue(cfgMap map[string]interface{}) string {
 
 }
 
+// upperKeys should always return a flat associative array of strings
+// coercing any interface{} value into a string
 func upperKeys(cfgMap map[string]interface{}) map[string]string {
 	newCfgMap := make(map[string]string)
 	for k, v := range cfgMap {
