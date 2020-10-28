@@ -160,6 +160,20 @@ func (n *yamlVisitor) SetValue(cfg *Cfg) (err error) {
 		return nil
 	}
 
+	// if SubPath is an empty string, grab the top level value that corresponds
+	// to a key with the string value of cfg.Name and attempt to assign it
+	// to cfg.Value by calling node.Decode
+	if cfg.SubPath == "" {
+		node, err := n.get(cfg.Name)
+		if err != nil {
+			return err
+		}
+		err = node.Decode(&cfg.Value)
+		if err != nil {
+			return err
+		}
+	}
+
 	// check if cfg.SubPath value has been used in a previous SetValue call
 	if valMap, ok := n.cachedNodes[cfg.SubPath]; ok {
 		cfg.Value, ok = valMap[cfg.Name]
