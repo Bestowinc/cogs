@@ -19,9 +19,10 @@ var EnvSubst bool = false
 
 // Cfg holds all the data needed to generate one string key value pair
 type Cfg struct {
-	// Defaults to key name unless explicitly declared
-	Name         string
-	Value        string
+	Name  string // Defaults to key name unless explicitly declared
+	Value string
+	// Cfg.ComplexValue should be  non empty when Cfg.Value is empty/""
+	// and vice versa
 	ComplexValue interface{}
 	Path         string
 	// default should be Cfg key name
@@ -133,6 +134,9 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]interface{}, error) {
 	// final output
 	cfgOut := make(map[string]interface{})
 	for cogName, cfg := range g.cfgMap {
+		if cfg.Value != "" && cfg.ComplexValue != nil {
+			return nil, fmt.Errorf("Cfg.Name[%s]: Cfg.Value and Cfg.ComplexValue are both non-empty", cfg.Name)
+		}
 		if cfg.ComplexValue != nil {
 			cfgOut[cogName] = cfg.ComplexValue
 		} else {
