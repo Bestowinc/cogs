@@ -8,9 +8,6 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-// used to represent Cfg k/v pair at the top level of a file
-const noSubPath = ""
-
 // NoEnc decides whether to output encrypted variables or now
 var NoEnc bool = false
 
@@ -19,16 +16,13 @@ var EnvSubst bool = false
 
 // Cfg holds all the data needed to generate one string key value pair
 type Cfg struct {
-	Name  string // Defaults to key name unless explicitly declared
-	Value string
-	// Cfg.ComplexValue should be  non empty when Cfg.Value is empty/""
-	// and vice versa
-	ComplexValue interface{}
-	Path         string
-	// default should be Cfg key name
-	SubPath   string
-	encrypted bool
-	readType  readType
+	Name         string      // Defaults to key name unless explicitly declared
+	Value        string      // Cfg.ComplexValue should be nil when Cfg.Value is not an empty string("")
+	ComplexValue interface{} // Cfg.Value should be empty string("") if Cfg.ComplexValue is non-nil
+	Path         string      // filepath string where Cfg can be resolved
+	SubPath      string      // object traversal string used to resolve Cfg if not at top level of document (yq syntax)
+	encrypted    bool        // indicates if value requires decryption
+	readType     readType
 }
 
 // String holds the string representation of a Cfg struct
@@ -42,6 +36,7 @@ func (c Cfg) String() string {
 }`, c.Name, c.Value, c.Path, c.SubPath, c.encrypted)
 }
 
+// configMap is used by Resolver to output the final k/v associative array
 type configMap map[string]*Cfg
 
 // Resolver is meant to define an object that returns the final string map to be used in a configuration
@@ -149,7 +144,6 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]interface{}, error) {
 }
 
 func (g *Gear) getCfgFilePath(cfgPath string) string {
-
 	if path.IsAbs(cfgPath) {
 		return cfgPath
 	}
