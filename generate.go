@@ -16,12 +16,12 @@ var EnvSubst bool = false
 
 // Cfg holds all the data needed to generate one string key value pair
 type Cfg struct {
-	Name         string      // Defaults to key name unless explicitly declared
-	Value        string      // Cfg.ComplexValue should be nil when Cfg.Value is not an empty string("")
+	Name         string      // defaults to key name in cog file unless var.name="other_name" is used
+	Value        string      // Cfg.ComplexValue should be nil if Cfg.Value is a non-empty string("")
 	ComplexValue interface{} // Cfg.Value should be empty string("") if Cfg.ComplexValue is non-nil
 	Path         string      // filepath string where Cfg can be resolved
 	SubPath      string      // object traversal string used to resolve Cfg if not at top level of document (yq syntax)
-	encrypted    bool        // indicates if value requires decryption
+	encrypted    bool        // indicates if decryption is needed to resolve Cfg.Value
 	readType     readType
 }
 
