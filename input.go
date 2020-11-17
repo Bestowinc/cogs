@@ -15,11 +15,14 @@ import (
 type readType string
 
 const (
+	// read format overrides
 	rDotenv      readType = "dotenv"
 	rJSON        readType = "json"
 	rJSONComplex readType = "json{}" // complex json key value pair: {"k":{"v1":[],"v2":[]}}
-	rWhole       readType = "whole"  // indicates to associate the entirety of a file to the given key name
-	deferred     readType = ""       // defer file config type to filename suffix
+
+	// read format derived from filepath suffix
+	rWhole   readType = "whole" // indicates to associate the entirety of a file to the given key name
+	deferred readType = ""      // defer file config type to filename suffix
 )
 
 // Validate ensures that a string is a valid readType enum
