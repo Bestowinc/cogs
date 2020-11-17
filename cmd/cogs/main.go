@@ -31,7 +31,7 @@ Options:
   --out=<type>     Configuration output type [default: json].
                    Valid types: json, toml, yaml, dotenv, raw.`
 
-	opts, err := docopt.ParseArgs(usage, os.Args[1:], "0.5.1")
+	opts, err := docopt.ParseArgs(usage, os.Args[1:], "0.5.0")
 	ifErr(err)
 	var conf struct {
 		Gen      bool
