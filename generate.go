@@ -109,8 +109,9 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]interface{}, error) {
 		}
 
 		newVisitor := NewYamlVisitor
-		// 3. create yaml visitor to handle SubPath strings
-		if path.Ext(cfgFilePath) == "json" {
+		// 3. create visitor to handle SubPath strings
+		// all read files should resolve to a yaml.Node, this includeds JSON, TOML, and dotenv
+		if FormatForPath(cfgFilePath) == JSON {
 			newVisitor = NewJSONVisitor
 		}
 		visitor, err := newVisitor(fileBuf)

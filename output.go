@@ -30,14 +30,14 @@ func (t Format) Validate() error {
 	}
 }
 
-func OutputCfg(cfg *Cfg, outputFormat Format) (interface{}, error) {
+func OutputCfg(cfg *Cfg, format Format) (interface{}, error) {
 	if cfg.Value != "" && cfg.ComplexValue != nil {
 		return nil, fmt.Errorf("Cfg.Name[%s]: Cfg.Value and Cfg.ComplexValue are both non-empty", cfg.Name)
 	}
 	if cfg.ComplexValue == nil {
 		return cfg.Value, nil
 	}
-	if outputFormat == Dotenv || outputFormat == Raw {
+	if format == Dotenv || format == Raw {
 		strValue, err := marshalComplexValue(cfg.ComplexValue, FormatForCfg(cfg))
 		if err != nil {
 			return nil, err
@@ -70,6 +70,11 @@ func IsYAMLFile(path string) bool {
 	return strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml")
 }
 
+// IsTOMLFile returns true if a given file path corresponds to a TOML file
+func IsTOMLFile(path string) bool {
+	return strings.HasSuffix(path, ".toml") || strings.HasSuffix(path, ".tml")
+}
+
 // IsJSONFile returns true if a given file path corresponds to a JSON file
 func IsJSONFile(path string) bool {
 	return strings.HasSuffix(path, ".json")
@@ -86,12 +91,13 @@ func FormatForPath(path string) Format {
 	switch {
 	case IsYAMLFile(path):
 		format = YAML
+	case IsTOMLFile(path):
+		format = TOML
 	case IsJSONFile(path):
 		format = JSON
 	case IsEnvFile(path):
 		format = Dotenv
 	}
-	// case IsTOMLFile(path):
 	return format
 }
 
@@ -102,6 +108,7 @@ func FormatForCfg(cfg *Cfg) (format Format) {
 		format = JSON
 	case rDotenv:
 		format = Dotenv
+	// grab Format from filepath suffix if there are no explicit type overrides
 	default:
 		format = FormatForPath(cfg.Path)
 	}
