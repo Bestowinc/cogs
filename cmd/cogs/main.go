@@ -100,8 +100,10 @@ Options:
 		var output string
 
 		if format = cogs.Format(conf.Output); format.Validate() != nil {
-			fmt.Fprintln(os.Stderr, fmt.Errorf("invalid arg: --out="+conf.Output))
-			os.Exit(1)
+			ifErr(fmt.Errorf("invalid arg: --out=" + conf.Output))
+		}
+		if conf.Delimiter != "" && format != cogs.Raw {
+			ifErr(fmt.Errorf("invalid opt: --sep"))
 		}
 
 		cfgMap, err := cogs.Generate(conf.Ctx, conf.File, format)

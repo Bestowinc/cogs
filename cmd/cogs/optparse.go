@@ -19,6 +19,13 @@ func ifErr(err error) {
 
 func getRawValue(cfgMap map[string]interface{}, delimiter string) string {
 	var values []string
+	// Interpret --sep='\n' and --sep='\t' as newlines and tabs
+	switch delimiter {
+	case "\\n":
+		delimiter = "\n"
+	case "\\t":
+		delimiter = "\t"
+	}
 	// for now, no delimiter
 	for _, v := range cfgMap {
 		values = append(values, fmt.Sprintf("%s", v))

@@ -21,4 +21,4 @@ var3.path = []
 complex_map = {path = [[],""], type = "json{}"}
 # returns file in entirety as value for k/v pair
 entire_file = {path = [[],""], type = "whole"}
-complex_var = {path = "./test_files/kustomization.yaml", name = "complexJsonMap", type = "json{}"}
+complex_var = {path = ["./test_files/kustomization.yaml", "complexJsonMap"], type = "json{}"}

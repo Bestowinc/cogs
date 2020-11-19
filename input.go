@@ -148,12 +148,11 @@ type visitor struct {
 
 // SetValue assigns the Value for a given Cfg using the existing Cfg.Path and Cfg.SubPath
 func (n *visitor) SetValue(cfg *Cfg) (err error) {
-	// rWhole readType grabs the entire rootNode and assigns cfg.ComplexValue to it
 	if cfg.readType == rWhole || cfg.readType == rJSONComplex {
 		return n.visitComplex(cfg)
 	}
 
-	// check if cfg.SubPath value has been used in a previous SetValue call
+	// 1. check if cfg.SubPath value has been used in a previous SetValue call
 	if flatMap, ok := n.visited[cfg.SubPath]; ok {
 		if cfg.Value, ok = flatMap[cfg.Name]; !ok {
 			return fmt.Errorf("unable to find %s", cfg.Name)
@@ -161,16 +160,10 @@ func (n *visitor) SetValue(cfg *Cfg) (err error) {
 		return nil
 	}
 
-	// if SubPath is an empty string, grab the top level value that corresponds
-	// to a key with the string value of cfg.Name and attempt to assign it
-	// to cfg.Value by calling node.Decode
+	// 2. grab the yaml node corresponding to the subpath
 	node, err := n.get(cfg.SubPath)
 	if err != nil {
 		return err
-	}
-
-	if cfg.readType == rJSONComplex {
-		return nil
 	}
 
 	if node.Kind != yaml.MappingNode && cfg.readType.Validate() != nil {
@@ -180,16 +173,14 @@ func (n *visitor) SetValue(cfg *Cfg) (err error) {
 
 	cachedMap := make(map[string]string)
 
+	// 3. traverse node based on read type
 	switch cfg.readType {
 	case rDotenv:
-		// .(map[string]interface{})
 		err = visitDotenv(cachedMap, node)
 	case rJSON:
 		err = visitJSON(cachedMap, node)
 	case deferred:
-		err = node.Decode(&cachedMap)
-		// cfg.ComplexValue = complexMap
-		// return nil
+		err = node.Decode(cachedMap)
 	default:
 		err = fmt.Errorf("unsupported readType: %s", cfg.readType)
 	}
@@ -197,41 +188,46 @@ func (n *visitor) SetValue(cfg *Cfg) (err error) {
 		return err
 	}
 
-	// cache the valid node before returning the desired value
+	// 4. add value to cache
 	n.visited[cfg.SubPath] = cachedMap
 
+	// 5. recurse to access cache
 	return n.SetValue(cfg)
 
 }
 
 // visitComplex handles the rWhole and rJSONComplex read types
 func (n *visitor) visitComplex(cfg *Cfg) (err error) {
-	var ok bool
-	// check if cfg.SubPath and readType has been used before
-	// since there is no guarantee that cfg.SubPath resolves to a flat map,
-	// there is no reason to nest maps within each other
-	key := cfg.SubPath + cfg.readType.String()
-	if cfg.ComplexValue, ok = n.visitedComplex[key]; ok {
+	// 1. check if cfg.SubPath and readType has been used before
+	if v, ok := n.visitedComplex[cfg.SubPath]; ok {
+		if cfg.readType == rWhole {
+			cfg.ComplexValue = v
+			return nil
+		}
+		complexMap, ok := v.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("path does not resolve to a map: %T", v)
+		}
+		if cfg.ComplexValue, ok = complexMap[cfg.Name]; !ok {
+			return fmt.Errorf("unable to find %s", cfg.Name)
+		}
 		return nil
 	}
 
-	println(key)
+	var i interface{}
+	// 2. grab the yaml node corresponding to the subpath
+	node, err := n.get(cfg.SubPath)
+	if err != nil {
+		return err
+	}
 
+	// 3. traverse node based on read type
 	switch cfg.readType {
 	case rWhole:
-		err = n.rootNode.Decode(&cfg.ComplexValue)
+		err = node.Decode(&i)
 	case rJSONComplex:
-		var node *yaml.Node
-		// 1. grab the yaml node corresponding to the subpath
-		fmt.Println("rootNode: ", n.rootNode)
-		node, err = n.get(cfg.SubPath)
-		if err != nil {
-			return err
-		}
-		fmt.Println("getNode: ", node)
-		// 2. decode to cfg.ComplexValue
-
-		err = visitJSONComplex(cfg.ComplexValue, node)
+		i = make(map[string]interface{})
+		err = visitJSONComplex(i.(map[string]interface{}), node)
 	default:
 		err = fmt.Errorf("unsupported readType: %s", cfg.readType)
 	}
@@ -239,11 +235,10 @@ func (n *visitor) visitComplex(cfg *Cfg) (err error) {
 		return err
 	}
 
-	// cache the already decoded cfg.ComplexValue to visitor.visitedComplex
-	// rWhole should have a SubPath of ""
-	n.visitedComplex[key] = cfg.ComplexValue
-
-	return nil
+	// 4. add value to cache
+	n.visitedComplex[cfg.SubPath] = i
+	// 5. recurse to access cache
+	return n.visitComplex(cfg)
 }
 
 func (n *visitor) get(subPath string) (*yaml.Node, error) {
@@ -272,6 +267,10 @@ func visitDotenv(cache map[string]string, node *yaml.Node) error {
 }
 
 func visitJSON(cache map[string]string, node *yaml.Node) error {
+	if err := node.Decode(&cache); err == nil {
+		return nil
+	}
+
 	var strEnv string
 
 	if err := node.Decode(&strEnv); err != nil {
@@ -284,11 +283,14 @@ func visitJSON(cache map[string]string, node *yaml.Node) error {
 	return json.Unmarshal([]byte(strEnv), &cache)
 }
 
-func visitJSONComplex(cache interface{}, node *yaml.Node) error {
-	fmt.Printf("%+v\n", node.Content)
-	b, err := yaml.Marshal(node.Content)
-	if err != nil {
-		return err
+func visitJSONComplex(cache map[string]interface{}, node *yaml.Node) error {
+	if err := node.Decode(&cache); err == nil {
+		return nil
 	}
-	return json.Unmarshal(b, &cache)
+
+	var strEnv string
+	if err := node.Decode(&strEnv); err != nil {
+		return fmt.Errorf("Unable to decode node kind: %s to complex JSON format: %s", kindStr[node.Kind], err)
+	}
+	return json.Unmarshal([]byte(strEnv), &cache)
 }
