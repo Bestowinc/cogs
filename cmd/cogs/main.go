@@ -14,14 +14,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const CogsVersion = "0.5.0"
+const CogsVersion = "0.6.0"
 
 func main() {
 	usage := `
 COGS COnfiguration manaGement S
 
 Usage:
-  cogs gen <ctx> <cog-file> [--out=<type>] [--keys=<key,>] [--not=<key,>] [-n] [-e] [-x] [--sep=<sep>]
+  cogs gen <ctx> <cog-file> [options]
 
 Options:
   -h --help        Show this screen.
@@ -31,9 +31,10 @@ Options:
   --keys=<key,>    Include specific keys, comma separated.
   --not=<key,>     Exclude specific keys, comma separated.
   --out=<type>     Configuration output type [default: json].
-                   Valid types: json, toml, yaml, dotenv, raw.
-  --export, -x     If --out=dotenv: Prepends "exort " to each line .
-  --sep=<sep>      If --out=raw: Assigns <sep>arator delimitng sequential raw values.
+                   <type>: json, toml, yaml, dotenv, raw.
+  
+  --export, -x     If --out=dotenv: Prepends "export " to each line.
+  --sep=<sep>      If --out=raw:    Assigns <sep>arator delimitng sequential raw values.
  `
 
 	opts, err := docopt.ParseArgs(usage, os.Args[1:], CogsVersion)
