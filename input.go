@@ -40,7 +40,7 @@ func (t readType) String() string {
 	case rDotenv:
 		return string(rDotenv)
 	case rJSON:
-		return string(rJSON)
+		return "flat json"
 	case rJSONComplex:
 		return "complex json"
 	case rWhole:
@@ -50,11 +50,6 @@ func (t readType) String() string {
 	default:
 		return "unknown"
 	}
-}
-
-// Queryable allows a query path to return the underlying value for a given visitor
-type Queryable interface {
-	SetValue(*Cfg) error
 }
 
 // readFile takes a filepath and returns the byte value of the data within
@@ -105,67 +100,63 @@ var kindStr = map[yaml.Kind]string{
 	yaml.AliasNode:    "AliasNode",
 }
 
-// NewJSONVisitor returns a visitor object that satisfies the Queryable interface
-// attempting to turn a supposed JSON byte slice into a *yaml.Node object
-func NewJSONVisitor(buf []byte) (Queryable, error) {
-	visitor := &yamlVisitor{
-		rootNode:    &yaml.Node{},
-		cachedNodes: make(map[string]map[string]string),
-		parser:      yqlib.NewYqLib(),
-	}
+// Visitor allows a query path to return the underlying value for a given visitor
+type Visitor interface {
+	SetValue(*Cfg) error
+}
 
+// NewJSONVisitor returns a visitor object that satisfies the Visitor interface
+// attempting to turn a supposed JSON byte slice into a *yaml.Node object
+func NewJSONVisitor(buf []byte) (Visitor, error) {
 	tempMap := make(map[string]interface{})
 	if err := json.Unmarshal(buf, &tempMap); err != nil {
 		return nil, err
 	}
-
 	// deserialize to yaml.Node
-	if err := visitor.rootNode.Encode(tempMap); err != nil {
+	rootNode := &yaml.Node{}
+	if err := rootNode.Encode(tempMap); err != nil {
 		return nil, err
 	}
-
-	return visitor, nil
+	return newVisitor(rootNode), nil
 }
 
-// NewYamlVisitor returns a visitor object that satisfies the Queryable interface
-func NewYamlVisitor(buf []byte) (Queryable, error) {
-	visitor := &yamlVisitor{
-		rootNode:    &yaml.Node{},
-		cachedNodes: make(map[string]map[string]string),
-		parser:      yqlib.NewYqLib(),
-	}
-
+// NewYamlVisitor returns a visitor object that satisfies the Visitor interface
+func NewYamlVisitor(buf []byte) (Visitor, error) {
 	// deserialize to yaml.Node
-	if err := yaml.Unmarshal(buf, visitor.rootNode); err != nil {
+	rootNode := &yaml.Node{}
+	if err := yaml.Unmarshal(buf, rootNode); err != nil {
 		return nil, err
 	}
-
-	return visitor, nil
+	return newVisitor(rootNode), nil
 }
 
-type yamlVisitor struct {
-	rootNode    *yaml.Node
-	cachedNodes map[string]map[string]string
-	parser      yqlib.YqLib
+func newVisitor(node *yaml.Node) Visitor {
+	return &visitor{
+		rootNode:       node,
+		visited:        make(map[string]map[string]string),
+		visitedComplex: make(map[string]interface{}),
+		parser:         yqlib.NewYqLib(),
+	}
+}
+
+type visitor struct {
+	rootNode       *yaml.Node
+	visited        map[string]map[string]string
+	visitedComplex map[string]interface{}
+	parser         yqlib.YqLib
 }
 
 // SetValue assigns the Value for a given Cfg using the existing Cfg.Path and Cfg.SubPath
-func (n *yamlVisitor) SetValue(cfg *Cfg) (err error) {
-	var ok bool
-
+func (n *visitor) SetValue(cfg *Cfg) (err error) {
 	// rWhole readType grabs the entire rootNode and assigns cfg.ComplexValue to it
-	if cfg.readType == rWhole {
-		if err = n.rootNode.Decode(&cfg.ComplexValue); err != nil {
-			return err
-		}
-		return nil
+	if cfg.readType == rWhole || cfg.readType == rJSONComplex {
+		return n.visitComplex(cfg)
 	}
 
 	// check if cfg.SubPath value has been used in a previous SetValue call
-	if valMap, ok := n.cachedNodes[cfg.SubPath]; ok {
-		cfg.Value, ok = valMap[cfg.Name]
-		if !ok {
-			return fmt.Errorf("unable to find %s", cfg)
+	if flatMap, ok := n.visited[cfg.SubPath]; ok {
+		if cfg.Value, ok = flatMap[cfg.Name]; !ok {
+			return fmt.Errorf("unable to find %s", cfg.Name)
 		}
 		return nil
 	}
@@ -178,7 +169,10 @@ func (n *yamlVisitor) SetValue(cfg *Cfg) (err error) {
 		return err
 	}
 
-	// nodes with readType of deferred should be a string to string k/v pair
+	if cfg.readType == rJSONComplex {
+		return nil
+	}
+
 	if node.Kind != yaml.MappingNode && cfg.readType.Validate() != nil {
 		return fmt.Errorf("%s: NodeKind/readType unsupported: %s/%s",
 			cfg.Name, kindStr[node.Kind], cfg.readType)
@@ -188,44 +182,71 @@ func (n *yamlVisitor) SetValue(cfg *Cfg) (err error) {
 
 	switch cfg.readType {
 	case rDotenv:
-		cachedMap, err = visitDotenv(node)
-		if err != nil {
-			return err
-		}
+		// .(map[string]interface{})
+		err = visitDotenv(cachedMap, node)
 	case rJSON:
-		cachedMap, err = visitJSON(node)
-		if err != nil {
-			return err
-		}
-	// do not cache complex maps for now
-	case rJSONComplex:
-		complexMap := make(map[string]interface{})
-		err = node.Decode(&complexMap)
-		if err != nil {
-			return err
-		}
-		cfg.ComplexValue = complexMap
-		return nil
+		err = visitJSON(cachedMap, node)
 	case deferred:
 		err = node.Decode(&cachedMap)
-		if err != nil {
-			return err
-		}
+		// cfg.ComplexValue = complexMap
+		// return nil
+	default:
+		err = fmt.Errorf("unsupported readType: %s", cfg.readType)
 	}
-
-	cfg.Value, ok = cachedMap[cfg.Name]
-	if !ok {
-		return fmt.Errorf("unable to find %s", cfg)
+	if err != nil {
+		return err
 	}
 
 	// cache the valid node before returning the desired value
-	n.cachedNodes[cfg.SubPath] = cachedMap
+	n.visited[cfg.SubPath] = cachedMap
 
-	return nil
+	return n.SetValue(cfg)
 
 }
 
-func (n *yamlVisitor) get(subPath string) (*yaml.Node, error) {
+// visitComplex handles the rWhole and rJSONComplex read types
+func (n *visitor) visitComplex(cfg *Cfg) (err error) {
+	var ok bool
+	// check if cfg.SubPath and readType has been used before
+	// since there is no guarantee that cfg.SubPath resolves to a flat map,
+	// there is no reason to nest maps within each other
+	key := cfg.SubPath + cfg.readType.String()
+	if cfg.ComplexValue, ok = n.visitedComplex[key]; ok {
+		return nil
+	}
+
+	println(key)
+
+	switch cfg.readType {
+	case rWhole:
+		err = n.rootNode.Decode(&cfg.ComplexValue)
+	case rJSONComplex:
+		var node *yaml.Node
+		// 1. grab the yaml node corresponding to the subpath
+		fmt.Println("rootNode: ", n.rootNode)
+		node, err = n.get(cfg.SubPath)
+		if err != nil {
+			return err
+		}
+		fmt.Println("getNode: ", node)
+		// 2. decode to cfg.ComplexValue
+
+		err = visitJSONComplex(cfg.ComplexValue, node)
+	default:
+		err = fmt.Errorf("unsupported readType: %s", cfg.readType)
+	}
+	if err != nil {
+		return err
+	}
+
+	// cache the already decoded cfg.ComplexValue to visitor.visitedComplex
+	// rWhole should have a SubPath of ""
+	n.visitedComplex[key] = cfg.ComplexValue
+
+	return nil
+}
+
+func (n *visitor) get(subPath string) (*yaml.Node, error) {
 	nodeCtx, err := n.parser.Get(n.rootNode, subPath)
 	if err != nil {
 		return nil, err
@@ -237,37 +258,37 @@ func (n *yamlVisitor) get(subPath string) (*yaml.Node, error) {
 	return nodeCtx[0].Node, nil
 }
 
-func visitDotenv(node *yaml.Node) (map[string]string, error) {
+func visitDotenv(cache map[string]string, node *yaml.Node) error {
 	var strEnv string
 
 	if err := node.Decode(&strEnv); err != nil {
 		var sliceEnv []string
 		if err := node.Decode(&sliceEnv); err != nil {
-			return nil, fmt.Errorf("Unable to decode node kind: %s to dotenv format", kindStr[node.Kind])
+			return fmt.Errorf("Unable to decode node kind: %s to dotenv format", kindStr[node.Kind])
 		}
 		strEnv = strings.Join(sliceEnv, "\n")
 	}
-	envMap, err := godotenv.Unmarshal(strEnv)
-	if err != nil {
-		return nil, err
-	}
-	return envMap, nil
+	return godotenv.Write(cache, strEnv)
 }
 
-func visitJSON(node *yaml.Node) (map[string]string, error) {
+func visitJSON(cache map[string]string, node *yaml.Node) error {
 	var strEnv string
 
 	if err := node.Decode(&strEnv); err != nil {
 		var sliceEnv []string
 		if err := node.Decode(&sliceEnv); err != nil {
-			return nil, fmt.Errorf("Unable to decode node kind: %s to JSON format", kindStr[node.Kind])
+			return fmt.Errorf("Unable to decode node kind: %s to flat JSON format", kindStr[node.Kind])
 		}
 		strEnv = strings.Join(sliceEnv, "\n")
 	}
-	envMap := make(map[string]string)
-	err := json.Unmarshal([]byte(strEnv), &envMap)
+	return json.Unmarshal([]byte(strEnv), &cache)
+}
+
+func visitJSONComplex(cache interface{}, node *yaml.Node) error {
+	fmt.Printf("%+v\n", node.Content)
+	b, err := yaml.Marshal(node.Content)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return envMap, nil
+	return json.Unmarshal(b, &cache)
 }

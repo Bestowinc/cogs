@@ -17,22 +17,25 @@ func ifErr(err error) {
 	}
 }
 
-func getRawValue(cfgMap map[string]interface{}) string {
-	output := ""
+func getRawValue(cfgMap map[string]interface{}, delimiter string) string {
+	var values []string
 	// for now, no delimiter
 	for _, v := range cfgMap {
-		output = output + fmt.Sprintf("%s", v)
+		values = append(values, fmt.Sprintf("%s", v))
 	}
-	return output
+	return strings.Join(values, delimiter)
 
 }
 
-// upperKeys should always return a flat associative array of strings
+// modKeys should always return a flat associative array of strings
 // coercing any interface{} value into a string
-func upperKeys(cfgMap map[string]interface{}) map[string]string {
+func modKeys(cfgMap map[string]interface{}, modFn ...func(string) string) map[string]string {
 	newCfgMap := make(map[string]string)
 	for k, v := range cfgMap {
-		newCfgMap[strings.ToUpper(k)] = fmt.Sprintf("%s", v)
+		for _, fn := range modFn {
+			k = fn(k)
+		}
+		newCfgMap[k] = fmt.Sprintf("%s", v)
 	}
 	return newCfgMap
 }

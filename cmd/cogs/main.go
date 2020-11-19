@@ -21,7 +21,7 @@ func main() {
 COGS COnfiguration manaGement S
 
 Usage:
-  cogs gen <ctx> <cog-file> [--out=<type>] [--keys=<key,>] [--not=<key,>] [-n] [-e]
+  cogs gen <ctx> <cog-file> [--out=<type>] [--keys=<key,>] [--not=<key,>] [-n] [-e] [-x] [--sep=<sep>]
 
 Options:
   -h --help        Show this screen.
@@ -31,20 +31,25 @@ Options:
   --keys=<key,>    Include specific keys, comma separated.
   --not=<key,>     Exclude specific keys, comma separated.
   --out=<type>     Configuration output type [default: json].
-                   Valid types: json, toml, yaml, dotenv, raw.`
+                   Valid types: json, toml, yaml, dotenv, raw.
+  --export, -x     If --out=dotenv: Prepends "exort " to each line .
+  --sep=<sep>      If --out=raw: Assigns <sep>arator delimitng sequential raw values.
+ `
 
 	opts, err := docopt.ParseArgs(usage, os.Args[1:], CogsVersion)
 	ifErr(err)
 	var conf struct {
-		Gen      bool
-		Ctx      string
-		File     string `docopt:"<cog-file>"`
-		Output   string `docopt:"--out"`
-		Keys     string
-		Not      string
-		NoEnc    bool
-		Raw      bool
-		EnvSubst bool `docopt:"--envsubst"`
+		Gen       bool
+		Ctx       string
+		File      string `docopt:"<cog-file>"`
+		Output    string `docopt:"--out"`
+		Keys      string
+		Not       string
+		NoEnc     bool
+		Raw       bool
+		EnvSubst  bool `docopt:"--envsubst"`
+		Export    bool
+		Delimiter string `docopt:"--sep"`
 	}
 
 	err = opts.Bind(&conf)
@@ -116,10 +121,16 @@ Options:
 			b, err = toml.Marshal(cfgMap)
 			output = string(b)
 		case cogs.Dotenv:
+			var modFuncs []func(string) string
+			modFuncs = append(modFuncs, strings.ToUpper)
+			// if --export was called, prepend "export " to key name
+			if conf.Export {
+				modFuncs = append(modFuncs, func(k string) string { return "export " + k })
+			}
 			// convert all key values to uppercase
-			output, err = godotenv.Marshal(upperKeys(cfgMap))
+			output, err = godotenv.Marshal(modKeys(cfgMap, modFuncs...))
 		case cogs.Raw:
-			output = getRawValue(cfgMap)
+			output = getRawValue(cfgMap, conf.Delimiter)
 		}
 		ifErr(err)
 

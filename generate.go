@@ -123,7 +123,7 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]interface{}, error) {
 		for _, cfg := range pGroup.cfgs {
 			err := visitor.SetValue(cfg)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("%s: %s", cfg.Name, err)
 			}
 
 		}
