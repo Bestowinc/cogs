@@ -14,6 +14,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const CogsVersion = "0.5.0"
+
 func main() {
 	usage := `
 COGS COnfiguration manaGement S
@@ -31,7 +33,7 @@ Options:
   --out=<type>     Configuration output type [default: json].
                    Valid types: json, toml, yaml, dotenv, raw.`
 
-	opts, err := docopt.ParseArgs(usage, os.Args[1:], "0.5.0")
+	opts, err := docopt.ParseArgs(usage, os.Args[1:], CogsVersion)
 	ifErr(err)
 	var conf struct {
 		Gen      bool
