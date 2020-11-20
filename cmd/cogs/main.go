@@ -15,9 +15,7 @@ import (
 )
 
 const CogsVersion = "0.6.0"
-
-func main() {
-	usage := `
+const usage string = `
 COGS COnfiguration manaGement S
 
 Usage:
@@ -34,24 +32,31 @@ Options:
                    <type>: json, toml, yaml, dotenv, raw.
   
   --export, -x     If --out=dotenv: Prepends "export " to each line.
+  --preserve, -p   If --out=dotenv: preserves declared variable casing.
   --sep=<sep>      If --out=raw:    Assigns <sep>arator delimitng sequential raw values.
  `
 
+type Conf struct {
+	Gen       bool
+	Ctx       string
+	File      string `docopt:"<cog-file>"`
+	Output    string `docopt:"--out"`
+	Keys      string
+	Not       string
+	NoEnc     bool
+	Raw       bool
+	EnvSubst  bool `docopt:"--envsubst"`
+	Export    bool
+	Preserve  bool
+	Delimiter string `docopt:"--sep"`
+}
+
+var conf Conf
+
+func main() {
+
 	opts, err := docopt.ParseArgs(usage, os.Args[1:], CogsVersion)
 	ifErr(err)
-	var conf struct {
-		Gen       bool
-		Ctx       string
-		File      string `docopt:"<cog-file>"`
-		Output    string `docopt:"--out"`
-		Keys      string
-		Not       string
-		NoEnc     bool
-		Raw       bool
-		EnvSubst  bool `docopt:"--envsubst"`
-		Export    bool
-		Delimiter string `docopt:"--sep"`
-	}
 
 	err = opts.Bind(&conf)
 	ifErr(err)
@@ -59,58 +64,18 @@ Options:
 	cogs.NoEnc = conf.NoEnc
 	cogs.EnvSubst = conf.EnvSubst
 
-	// filterCfgMap retains only key names passed to --keys
-	filterCfgMap := func(cfgMap map[string]interface{}) (map[string]interface{}, error) {
-
-		// --not runs before --keys!
-		// make sure to avoid --not=key_name --key=key_name, ya dingus!
-		var notList []string
-		if conf.Not != "" {
-			notList = strings.Split(conf.Not, ",")
-			cfgMap = exclude(notList, cfgMap)
-		}
-		if conf.Keys == "" {
-			return cfgMap, nil
-		}
-
-		keyList := strings.Split(conf.Keys, ",")
-		newCfgMap := make(map[string]interface{})
-		for _, key := range keyList {
-			var ok bool
-			newCfgMap[key], ok = cfgMap[key]
-			if !ok {
-				notHint := ""
-				if inList(key, notList) {
-					notHint = fmt.Sprintf("\n\n--not=%s and --keys=%s were called\n"+
-						"avoid trying to include and exclude the same value, ya dingus!", key, key)
-				}
-				encHint := ""
-				if conf.NoEnc {
-					encHint = "\n\n--no-enc was called: was it an encrypted value?\n"
-				}
-				return nil, fmt.Errorf("--key: [%s] missing from generated config%s%s", key, encHint, notHint)
-			}
-		}
-		return newCfgMap, nil
-	}
-
 	switch {
 	case conf.Gen:
-		var format cogs.Format
 		var b []byte
 		var output string
 
-		if format = cogs.Format(conf.Output); format.Validate() != nil {
-			ifErr(fmt.Errorf("invalid arg: --out=" + conf.Output))
-		}
-		if conf.Delimiter != "" && format != cogs.Raw {
-			ifErr(fmt.Errorf("invalid opt: --sep"))
-		}
+		format, err := conf.validate()
+		ifErr(err)
 
 		cfgMap, err := cogs.Generate(conf.Ctx, conf.File, format)
 		ifErr(err)
 
-		cfgMap, err = filterCfgMap(cfgMap)
+		cfgMap, err = conf.filterCfgMap(cfgMap)
 		ifErr(err)
 
 		switch format {
@@ -125,7 +90,10 @@ Options:
 			output = string(b)
 		case cogs.Dotenv:
 			var modFuncs []func(string) string
-			modFuncs = append(modFuncs, strings.ToUpper)
+			// if --preserve was called, do not convert variable names to uppercase
+			if conf.Preserve {
+				modFuncs = append(modFuncs, strings.ToUpper)
+			}
 			// if --export was called, prepend "export " to key name
 			if conf.Export {
 				modFuncs = append(modFuncs, func(k string) string { return "export " + k })
