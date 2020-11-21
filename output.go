@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // Format represents the final marshalled k/v output type from a resolved Gear
@@ -116,3 +116,5 @@ func FormatForCfg(cfg *Cfg) (format Format) {
 	}
 	return format
 }
+
+// getForatm
