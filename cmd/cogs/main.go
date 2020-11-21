@@ -33,7 +33,7 @@ Options:
   
   --export, -x     If --out=dotenv: Prepends "export " to each line.
   --preserve, -p   If --out=dotenv: preserves declared variable casing.
-  --sep=<sep>      If --out=raw:    Assigns <sep>arator delimitng sequential raw values.
+  --sep=<sep>      If --out=raw:    Assigns <sep>arator delimiting sequential raw values.
  `
 
 type Conf struct {
@@ -91,7 +91,7 @@ func main() {
 		case cogs.Dotenv:
 			var modFuncs []func(string) string
 			// if --preserve was called, do not convert variable names to uppercase
-			if conf.Preserve {
+			if !conf.Preserve {
 				modFuncs = append(modFuncs, strings.ToUpper)
 			}
 			// if --export was called, prepend "export " to key name

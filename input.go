@@ -147,13 +147,13 @@ type visitor struct {
 }
 
 // SetValue assigns the Value for a given Cfg using the existing Cfg.Path and Cfg.SubPath
-func (n *visitor) SetValue(cfg *Cfg) (err error) {
+func (vi *visitor) SetValue(cfg *Cfg) (err error) {
 	if cfg.readType == rWhole || cfg.readType == rJSONComplex {
-		return n.visitComplex(cfg)
+		return vi.visitComplex(cfg)
 	}
 
 	// 1. check if cfg.SubPath value has been used in a previous SetValue call
-	if flatMap, ok := n.visited[cfg.SubPath]; ok {
+	if flatMap, ok := vi.visited[cfg.SubPath]; ok {
 		if cfg.Value, ok = flatMap[cfg.Name]; !ok {
 			return fmt.Errorf("unable to find %s", cfg.Name)
 		}
@@ -161,7 +161,7 @@ func (n *visitor) SetValue(cfg *Cfg) (err error) {
 	}
 
 	// 2. grab the yaml node corresponding to the subpath
-	node, err := n.get(cfg.SubPath)
+	node, err := vi.get(cfg.SubPath)
 	if err != nil {
 		return err
 	}
@@ -176,7 +176,7 @@ func (n *visitor) SetValue(cfg *Cfg) (err error) {
 	// 3. traverse node based on read type
 	switch cfg.readType {
 	case rDotenv:
-		err = visitDotenv(cachedMap, node)
+		err = visitDotenv(&cachedMap, node)
 	case rJSON:
 		err = visitJSON(cachedMap, node)
 	case deferred:
@@ -189,17 +189,17 @@ func (n *visitor) SetValue(cfg *Cfg) (err error) {
 	}
 
 	// 4. add value to cache
-	n.visited[cfg.SubPath] = cachedMap
+	vi.visited[cfg.SubPath] = cachedMap
 
 	// 5. recurse to access cache
-	return n.SetValue(cfg)
+	return vi.SetValue(cfg)
 
 }
 
 // visitComplex handles the rWhole and rJSONComplex read types
-func (n *visitor) visitComplex(cfg *Cfg) (err error) {
+func (vi *visitor) visitComplex(cfg *Cfg) (err error) {
 	// 1. check if cfg.SubPath and readType has been used before
-	if v, ok := n.visitedComplex[cfg.SubPath]; ok {
+	if v, ok := vi.visitedComplex[cfg.SubPath]; ok {
 		if cfg.readType == rWhole {
 			cfg.ComplexValue = v
 			return nil
@@ -213,15 +213,13 @@ func (n *visitor) visitComplex(cfg *Cfg) (err error) {
 		}
 		return nil
 	}
-
-	var i interface{}
 	// 2. grab the yaml node corresponding to the subpath
-	node, err := n.get(cfg.SubPath)
+	node, err := vi.get(cfg.SubPath)
 	if err != nil {
 		return err
 	}
-
 	// 3. traverse node based on read type
+	var i interface{}
 	switch cfg.readType {
 	case rWhole:
 		err = node.Decode(&i)
@@ -234,11 +232,10 @@ func (n *visitor) visitComplex(cfg *Cfg) (err error) {
 	if err != nil {
 		return err
 	}
-
 	// 4. add value to cache
-	n.visitedComplex[cfg.SubPath] = i
+	vi.visitedComplex[cfg.SubPath] = i
 	// 5. recurse to access cache
-	return n.visitComplex(cfg)
+	return vi.visitComplex(cfg)
 }
 
 func (n *visitor) get(subPath string) (*yaml.Node, error) {
@@ -253,17 +250,18 @@ func (n *visitor) get(subPath string) (*yaml.Node, error) {
 	return nodeCtx[0].Node, nil
 }
 
-func visitDotenv(cache map[string]string, node *yaml.Node) error {
+func visitDotenv(cache *map[string]string, node *yaml.Node) (err error) {
 	var strEnv string
 
-	if err := node.Decode(&strEnv); err != nil {
+	if err = node.Decode(&strEnv); err != nil {
 		var sliceEnv []string
 		if err := node.Decode(&sliceEnv); err != nil {
 			return fmt.Errorf("Unable to decode node kind: %s to dotenv format", kindStr[node.Kind])
 		}
 		strEnv = strings.Join(sliceEnv, "\n")
 	}
-	return godotenv.Write(cache, strEnv)
+	*cache, err = godotenv.Unmarshal(strEnv)
+	return err
 }
 
 func visitJSON(cache map[string]string, node *yaml.Node) error {

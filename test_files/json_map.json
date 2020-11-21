@@ -6,10 +6,11 @@
   },
   "complex_map": {
     "nested": {
-      "nested": [
-        "value",
-        "value"
-      ]
-    }
+      "var4": "var4_value"
+    },
+    "array": [
+      "value",
+      "value"
+    ]
   }
 }

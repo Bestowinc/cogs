@@ -13,12 +13,14 @@ var4.path = [[], "complex_map.nested"]
 [complex_json]
 path = ["./test_files/json_map.json", "flat_map"]
 [complex_json.vars]
-var1.path = []
-var2.path = []
-var3.path = []
+# returns file in entirety as value for k/v pair
+entire_file = {path = [[],""], type = "whole"}
 # '[[], ""]' retains "./test_files/json_map.json" in [] reference in index 0
 # and "" in index 1 disables object traversal
 complex_map = {path = [[],""], type = "json{}"}
-# returns file in entirety as value for k/v pair
-entire_file = {path = [[],""], type = "whole"}
+# returns just the array element without an overlying associative array
+# specifying subpath "complex_map.array" along with the read type of whole
+# allows the traversed element to be returned without casting
+array = {path = [[],"complex_map.array"], type = "whole"}
+# retrieves a complex object from a string held in a yaml file
 complex_var = {path = ["./test_files/kustomization.yaml", "complexJsonMap"], type = "json{}"}
