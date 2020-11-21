@@ -32,10 +32,11 @@ Options:
                    <type>: json, toml, yaml, dotenv, raw.
   
   --export, -x     If --out=dotenv: Prepends "export " to each line.
-  --preserve, -p   If --out=dotenv: preserves declared variable casing.
-  --sep=<sep>      If --out=raw:    Assigns <sep>arator delimiting sequential raw values.
+  --preserve, -p   If --out=dotenv: Preserves variable casing.
+  --sep=<sep>      If --out=raw:    Delimits values with a <sep>arator.
  `
 
+// Conf is used to bind CLI agruments and options
 type Conf struct {
 	Gen       bool
 	Ctx       string

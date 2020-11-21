@@ -52,6 +52,7 @@ func modKeys(cfgMap map[string]interface{}, modFn ...func(string) string) map[st
 // exclude produces a laundered map with exclusionList values missing
 func exclude(exclusionList []string, cfgMap map[string]interface{}) map[string]interface{} {
 	newCfgMap := make(map[string]interface{})
+
 	for k := range cfgMap {
 		if inList(k, exclusionList) {
 			continue
@@ -95,7 +96,7 @@ func (c *Conf) filterCfgMap(cfgMap map[string]interface{}) (map[string]interface
 					"avoid trying to include and exclude the same value, ya dingus!", key, key)
 			}
 			if c.NoEnc {
-				hint = hint + "\n\n--no-enc was called: was it an encrypted value?\n"
+				hint += "\n\n--no-enc was called: was it an encrypted value?\n"
 			}
 			return nil, fmt.Errorf("--key: [%s] missing from generated config%s", key, hint)
 		}
@@ -110,6 +111,7 @@ func (c *Conf) validate() (format cogs.Format, err error) {
 	if format = cogs.Format(conf.Output); format.Validate() != nil {
 		return "", fmt.Errorf("invalid opt: --out" + conf.Output)
 	}
+
 	switch {
 	case format != cogs.Raw:
 		if c.Delimiter != "" {

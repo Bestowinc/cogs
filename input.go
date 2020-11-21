@@ -202,6 +202,7 @@ func (vi *visitor) visitComplex(cfg *Cfg) (err error) {
 	if v, ok := vi.visitedComplex[cfg.SubPath]; ok {
 		if cfg.readType == rWhole {
 			cfg.ComplexValue = v
+
 			return nil
 		}
 		complexMap, ok := v.(map[string]interface{})
@@ -238,8 +239,8 @@ func (vi *visitor) visitComplex(cfg *Cfg) (err error) {
 	return vi.visitComplex(cfg)
 }
 
-func (n *visitor) get(subPath string) (*yaml.Node, error) {
-	nodeCtx, err := n.parser.Get(n.rootNode, subPath)
+func (vi *visitor) get(subPath string) (*yaml.Node, error) {
+	nodeCtx, err := vi.parser.Get(vi.rootNode, subPath)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +289,7 @@ func visitJSONComplex(cache map[string]interface{}, node *yaml.Node) error {
 
 	var strEnv string
 	if err := node.Decode(&strEnv); err != nil {
-		return fmt.Errorf("Unable to decode node kind: %s to complex JSON format: %s", kindStr[node.Kind], err)
+		return fmt.Errorf("Unable to decode node kind: %s to complex JSON format: %w", kindStr[node.Kind], err)
 	}
 	return json.Unmarshal([]byte(strEnv), &cache)
 }
