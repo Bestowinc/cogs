@@ -150,6 +150,9 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]interface{}, error) {
 }
 
 func (g *Gear) getCfgFilePath(cfgPath string) string {
+	if cfgPath == "." {
+		return g.filePath
+	}
 	if path.IsAbs(cfgPath) {
 		return cfgPath
 	}
