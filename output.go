@@ -116,5 +116,3 @@ func FormatForCfg(cfg *Cfg) (format Format) {
 	}
 	return format
 }
-
-// getForatm

@@ -11,7 +11,7 @@ json = '''
 '''
 
 # inheritor pattern
-# this allows explicit iheritance from base variables without adding more
+# this allows explicit inheritance from base variables without adding more
 # special syntax since the generation path logic does not change
 [inheritor]
 # "." - a single period is a reserved filepath string

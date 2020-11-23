@@ -122,7 +122,7 @@ func NewJSONVisitor(buf []byte) (Visitor, error) {
 	return newVisitor(rootNode), nil
 }
 
-// NewYamlVisitor returns a visitor object that satisfies the Visitor interface
+// NewYAMLVisitor returns a visitor object that satisfies the Visitor interface
 func NewYAMLVisitor(buf []byte) (Visitor, error) {
 	// deserialize to yaml.Node
 	rootNode := &yaml.Node{}
