@@ -14,7 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const cmdVersion = "0.6.0"
+const cogsVersion = "0.5.0"
 const usage string = `
 COGS COnfiguration manaGement S
 
@@ -56,7 +56,7 @@ var conf Conf
 
 func main() {
 
-	opts, err := docopt.ParseArgs(usage, os.Args[1:], cmdVersion)
+	opts, err := docopt.ParseArgs(usage, os.Args[1:], cogsVersion)
 	ifErr(err)
 
 	err = opts.Bind(&conf)
