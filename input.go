@@ -9,6 +9,8 @@ import (
 	"github.com/drone/envsubst"
 	"github.com/joho/godotenv"
 	"github.com/mikefarah/yq/v3/pkg/yqlib"
+	"github.com/pelletier/go-toml"
+	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 )
 
@@ -83,7 +85,21 @@ func envSubFile(filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	substEnv, err := envsubst.EvalEnv(string(bytes))
+
+	// ------------------------------------------------------------------------
+	// strip comments so we dont do comment substitution by tokenizing the file
+	// and reemiting the file as bytes  ¯\_(ツ)_/¯
+	tree, err := toml.LoadBytes(bytes)
+	if err != nil {
+		return "", err
+	}
+	noCommentTree, err := toml.Marshal(tree)
+	if err != nil {
+		return "", err
+	}
+	// ------------------------------------------------------------------------
+
+	substEnv, err := envsubst.EvalEnv(string(noCommentTree))
 	if err != nil {
 		return "", err
 	}
@@ -120,11 +136,41 @@ func NewJSONVisitor(buf []byte) (Visitor, error) {
 	return newVisitor(rootNode), nil
 }
 
-// NewYamlVisitor returns a visitor object that satisfies the Visitor interface
-func NewYamlVisitor(buf []byte) (Visitor, error) {
+// NewYAMLVisitor returns a visitor object that satisfies the Visitor interface
+func NewYAMLVisitor(buf []byte) (Visitor, error) {
 	// deserialize to yaml.Node
 	rootNode := &yaml.Node{}
 	if err := yaml.Unmarshal(buf, rootNode); err != nil {
+		return nil, err
+	}
+	return newVisitor(rootNode), nil
+}
+
+// NewTOMLVisitor returns a visitor object that satisfies the Visitor interface
+// attempting to turn a supposed TOML byte slice into a *yaml.Node object
+func NewTOMLVisitor(buf []byte) (Visitor, error) {
+	tempMap := make(map[string]interface{})
+	if err := toml.Unmarshal(buf, &tempMap); err != nil {
+		return nil, errors.Wrap(err, "NewTOMLVisitor")
+	}
+	// deserialize to yaml.Node
+	rootNode := &yaml.Node{}
+	if err := rootNode.Encode(tempMap); err != nil {
+		return nil, err
+	}
+	return newVisitor(rootNode), nil
+}
+
+// NewDotenvVisitor returns a visitor object that satisfies the Visitor interface
+// attempting to turn a supposed dotenv byte slice into a *yaml.Node object
+func NewDotenvVisitor(buf []byte) (Visitor, error) {
+	tempMap, err := godotenv.Unmarshal(string(buf))
+	if err != nil {
+		return nil, err
+	}
+	// deserialize to yaml.Node
+	rootNode := &yaml.Node{}
+	if err := rootNode.Encode(tempMap); err != nil {
 		return nil, err
 	}
 	return newVisitor(rootNode), nil
@@ -166,7 +212,7 @@ func (vi *visitor) SetValue(cfg *Cfg) (err error) {
 		return err
 	}
 
-	if node.Kind != yaml.MappingNode && cfg.readType.Validate() != nil {
+	if node.Kind != yaml.MappingNode && node.Kind != yaml.ScalarNode && cfg.readType.Validate() != nil {
 		return fmt.Errorf("%s: NodeKind/readType unsupported: %s/%s",
 			cfg.Name, kindStr[node.Kind], cfg.readType)
 	}
