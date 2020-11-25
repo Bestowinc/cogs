@@ -148,7 +148,33 @@ DATABASE_SECRETS: "secret_pw"
 
 [TOML spec](https://toml.io/en/v1.0.0-rc.3#keyvalue-pair)
 
-[envsubst](https://www.gnu.org/software/gettext/manual/html_node/envsubst-Invocation.html)
+[envsubst](https://www.gnu.org/software/bash/manual/html_node/Shell-Parameter-Expansion.html) cheatsheet:
+
+
+| __Expression__                   | __Meaning__    |
+| -----------------               | -------------- |
+| `${var}`                        | Value of var (same as `$var`)
+| `${var-${DEFAULT}}`             | If var not set, evaluate expression as ${DEFAULT}
+| `${var:-${DEFAULT}}`            | If var not set or is empty, evaluate expression as ${DEFAULT}
+| `${var=${DEFAULT}}`             | If var not set, evaluate expression as ${DEFAULT}
+| `${var:=${DEFAULT}}`            | If var not set or is empty, evaluate expression as ${DEFAULT}
+| `$$var`                         | Escape expressions. Result will be `$var`.
+| `${var}`                        | Value of var (same as `$var`)
+| `${var^^}`                      | Uppercase value of `$var`
+| `${var,,}`                      | Lowercase value of `$var`
+| `${#var}`                       | Length of `$var`
+| `${var^}`                       |
+| `${var,}`                       |
+| `${var:position}`               |
+| `${var:position:length}`        |
+| `${var#substring}`              |
+| `${var##substring}`             |
+| `${var%substring}`              |
+| `${var%%substring}`             |
+| `${var/substring/replacement}`  |
+| `${var//substring/replacement}` |
+| `${var/#substring/replacement}` |
+| `${var/%substring/replacement}` |
 
 
 Notes:

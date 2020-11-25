@@ -12,7 +12,7 @@ require (
 	github.com/aws/aws-sdk-go v1.35.33 // indirect
 	github.com/dimchansky/utfbom v1.1.1 // indirect
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
-	github.com/drone/envsubst v1.0.2
+	github.com/drone/envsubst v1.0.3-0.20200804185402-58bc65f69603
 	github.com/frankban/quicktest v1.11.1 // indirect
 	github.com/goccy/go-yaml v1.8.4 // indirect
 	github.com/golang/snappy v0.0.2 // indirect

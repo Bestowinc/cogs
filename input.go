@@ -85,7 +85,21 @@ func envSubFile(filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	substEnv, err := envsubst.EvalEnv(string(bytes))
+
+	// ------------------------------------------------------------------------
+	// strip comments so we dont do comment substitution by tokenizing the file
+	// and reemiting the file as bytes  ¯\_(ツ)_/¯
+	tree, err := toml.LoadBytes(bytes)
+	if err != nil {
+		return "", err
+	}
+	noCommentTree, err := toml.Marshal(tree)
+	if err != nil {
+		return "", err
+	}
+	// ------------------------------------------------------------------------
+
+	substEnv, err := envsubst.EvalEnv(string(noCommentTree))
 	if err != nil {
 		return "", err
 	}
