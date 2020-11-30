@@ -108,7 +108,7 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]interface{}, error) {
 		// 2. for each distinct Path: generate a Reader object
 		cfgFilePath := g.getCfgFilePath(p)
 		// if cfg.Path references the cog file, return the already read (and envsubst applied) value
-		if p == "." {
+		if p == selfPath {
 			fileBuf = g.fileValue
 		} else if fileBuf, err = pGroup.loadFile(cfgFilePath); err != nil {
 			return nil, err
@@ -156,7 +156,7 @@ func (g *Gear) ResolveMap(env RawEnv) (map[string]interface{}, error) {
 }
 
 func (g *Gear) getCfgFilePath(cfgPath string) string {
-	if cfgPath == "." {
+	if cfgPath == selfPath {
 		return g.filePath
 	}
 	if path.IsAbs(cfgPath) {
@@ -199,7 +199,6 @@ func Generate(envName, cogPath string, outputType Format) (map[string]interface{
 }
 
 func generate(envName string, tree *toml.Tree, gear Resolver) (map[string]interface{}, error) {
-	var ok bool
 	var err error
 
 	type rawManifest struct {

@@ -14,6 +14,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// "." - a single period is a reserved filepath string
+// it is used to self-reference the cog file
+// this helps avoid breaking generation when the cog file is moved or renamed
+const selfPath string = "."
+
 type readType string
 
 const (
