@@ -14,7 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const cogsVersion = "0.7.0"
+const cogsVersion = "0.7.1"
 const usage string = `
 COGS COnfiguration manaGement S
 
@@ -98,6 +98,7 @@ func main() {
 			}
 			// convert all key values to uppercase
 			output, err = godotenv.Marshal(modKeys(cfgMap, modFuncs...))
+			output = output + "\n"
 		case cogs.Raw:
 			keyList := []string{}
 			if conf.Keys != "" {
