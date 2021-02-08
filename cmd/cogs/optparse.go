@@ -61,6 +61,9 @@ func modKeys(cfgMap map[string]interface{}, modFn ...func(string) string) map[st
 
 // filterCfgMap retains only key names passed to --keys
 func (c *Conf) filterCfgMap(cfgMap cogs.CfgMap) (cogs.CfgMap, error) {
+	if cfgMap == nil {
+		return nil, nil
+	}
 
 	// --not runs before --keys!
 	// make sure to avoid --not=key_name --key=key_name, ya dingus!

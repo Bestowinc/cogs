@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/pelletier/go-toml"
 )
 
@@ -20,26 +21,28 @@ var RecursionLimit int = 12
 
 // Link holds all the data needed to resolve one string key value pair
 type Link struct {
-	Name      string      // defaults to key name in cog file unless var.name="other_name" is used
-	Value     interface{} // Holds a complex or simple value for the given Link
-	Path      string      // filepath string where Link can be resolved
-	SubPath   string      // object traversal string used to resolve Link if not at top level of document (yq syntax)
-	encrypted bool        // indicates if decryption is needed to resolve Link.Value
-	remote    bool        // indicates if an HTTP request is needed to return the given document
-	header    http.Header // HTTP request headers
-	keys      []string    // key filter for Gear read types
-	readType  readType
+	KeyName    string      // the key name definex in the context file
+	SearchName string      // same as keyName unless redefined using the `name` key: var.name="other_name"
+	Value      interface{} // Holds a complex or simple value for the given Link
+	Path       string      // filepath string where Link can be resolved
+	SubPath    string      // object traversal string used to resolve Link if not at top level of document (yq syntax)
+	encrypted  bool        // indicates if decryption is needed to resolve Link.Value
+	remote     bool        // indicates if an HTTP request is needed to return the given document
+	header     http.Header // HTTP request headers
+	keys       []string    // key filter for Gear read types
+	readType   readType
 }
 
 // String holds the string representation of a Link struct
 func (c Link) String() string {
 	return fmt.Sprintf(`Link{
-	Name: %s
+	KeName: %s
+	SearchName: %s
 	Value: %s
 	Path: %s
 	SubPath: %s
 	encrypted: %t
-}`, c.Name, c.Value, c.Path, c.SubPath, c.encrypted)
+}`, c.KeyName, c.SearchName, c.Value, c.Path, c.SubPath, c.encrypted)
 }
 
 // LinkMap is used by Resolver to output the final k/v associative array
@@ -54,7 +57,7 @@ type EnvFilter func(CfgMap) (CfgMap, error)
 // Resolver is meant to define an object that returns the final string map to be used in a configuration
 // resolving any paths and sub paths defined in the underling config map
 type Resolver interface {
-	ResolveMap(CfgMap) (CfgMap, error)
+	ResolveMap(baseContext) (CfgMap, error)
 	SetName(string)
 }
 
@@ -81,16 +84,17 @@ func (g *Gear) SetName(name string) {
 
 // ResolveMap outputs the flat associative string, resolving potential filepath pointers
 // held by Link objects by calling the .SetValue() method
-func (g *Gear) ResolveMap(env CfgMap) (CfgMap, error) {
+func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 	var err error
 
-	if g.filter != nil {
-		if env, err = g.filter(env); err != nil {
-			return nil, err
-		}
+	if ctx.Vars, err = g.filter(ctx.Vars); err != nil {
+		return nil, err
+	}
+	if ctx.Enc.Vars, err = g.filter(ctx.Enc.Vars); err != nil {
+		return nil, err
 	}
 
-	g.linkMap, err = parseEnv(env)
+	g.linkMap, err = parseCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +171,7 @@ func (g *Gear) ResolveMap(env CfgMap) (CfgMap, error) {
 		for _, link := range pGroup.links {
 			err := visitor.SetValue(link)
 			if err != nil {
-				return nil, fmt.Errorf("%s: %w", link.Name, err)
+				return nil, fmt.Errorf("%s: %w", link.KeyName, err)
 			}
 
 		}
@@ -200,7 +204,7 @@ func (g *Gear) getLinkFilePath(linkPath string) string {
 	return path.Join(dir, linkPath)
 }
 
-// Generate is a top level command that takes an env argument and cogfilepath to return a string map
+// Generate is a top level command that takes an context name argument and cogfilepath to return a string map
 func Generate(ctxName, cogPath string, outputType Format, filter EnvFilter) (CfgMap, error) {
 	var tree *toml.Tree
 	var err error
@@ -236,33 +240,29 @@ func Generate(ctxName, cogPath string, outputType Format, filter EnvFilter) (Cfg
 
 func generate(ctxName string, tree *toml.Tree, gear Resolver) (CfgMap, error) {
 	var err error
+	var ctx baseContext
 
-	type rawManifest struct {
-		table map[string]CfgMap
-	}
-
-	// grab manifest name
 	name, ok := tree.Get("name").(string)
-	if !ok || name == "" {
-		return nil, fmt.Errorf("manifest.name string value must be present as a string")
+	if !ok {
+		return nil, fmt.Errorf("manifest.name string value must be present as a non-empty string")
 	}
-	if err = tree.Delete("name"); err != nil {
-		return nil, err
-	}
-
 	gear.SetName(name)
 
-	var manifest rawManifest
-	if err = tree.Unmarshal(&manifest.table); err != nil {
-		return nil, err
-	}
-
-	env, ok := manifest.table[ctxName]
+	ctxTree, ok := tree.Get(ctxName).(*toml.Tree)
 	if !ok {
 		return nil, fmt.Errorf("%s context missing from cog file", ctxName)
 	}
 
-	genOut, err := gear.ResolveMap(env)
+	var ctxMap map[string]interface{}
+	if err := ctxTree.Unmarshal(&ctxMap); err != nil {
+		return nil, err
+	}
+
+	if err = mapstructure.Decode(ctxMap, &ctx); err != nil {
+		return nil, fmt.Errorf("generate context: %w", err)
+	}
+
+	genOut, err := gear.ResolveMap(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", ctxName, err)
 	}
@@ -270,98 +270,91 @@ func generate(ctxName string, tree *toml.Tree, gear Resolver) (CfgMap, error) {
 	return genOut, nil
 }
 
-// parseEnv traverses an map interface to populate a gear's configMap
-func parseEnv(env CfgMap) (linkMap LinkMap, err error) {
+// parseCtx traverses an map interface to populate a gear's configMap
+func parseCtx(ctx baseContext) (linkMap LinkMap, err error) {
 	linkMap = make(map[string]*Link)
 
 	// skip fetching encrypted vars if flag is toggled
 	if !NoEnc {
-		err = decodeEncrypted(linkMap, env)
+		err = decodeEncVars(linkMap, ctx.Enc)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	err = decodeEnv(linkMap, env)
+	err = decodeVars(linkMap, ctx.toContext())
 	if err != nil {
 		return nil, err
 	}
 	return linkMap, nil
 }
 
-func decodeEnv(linkMap LinkMap, env CfgMap) error {
+// baseContext is the struct that maps to the TOML table's ctx name
+type baseContext struct {
+	Path     interface{} `mapstructure:",omitempty"`
+	ReadType string      `mapstructure:"type,omitempty"`
+	Vars     CfgMap      `mapstructure:",omitempty"`
+	Enc      context     `mapstructure:",omitempty"`
+}
+
+func (b baseContext) toContext() context {
+	return context{
+		Path:     b.Path,
+		ReadType: b.ReadType,
+		Vars:     b.Vars,
+	}
+}
+
+type context struct {
+	Path     interface{} `mapstructure:",omitempty"`
+	ReadType string      `mapstructure:"type,omitempty"`
+	Vars     CfgMap      `mapstructure:",omitempty"`
+}
+
+func decodeVars(linkMap LinkMap, ctx context) error {
 	var err error
-	var baseLink Link
+	var baseLink Link // any readType or Path declarations to be inherited by Links
 
 	// global path
-	if pathValue, ok := env["path"]; ok {
-		if err = decodePath(pathValue, &baseLink, nil); err != nil {
+	if ctx.Path != nil {
+		if err = decodePath(ctx.Path, &baseLink, nil); err != nil {
 			return err
 		}
 	}
 
 	// global type
-	if rawValue, ok := env["type"]; ok {
-		strValue, ok := rawValue.(string)
-		if !ok {
-			return fmt.Errorf("env.type must be a string value")
-		}
-		baseLink.readType = readType(strValue)
-		if err := baseLink.readType.Validate(); err != nil {
-			return err
-		}
-	}
-
-	rawVars, ok := env["vars"]
-	if !ok {
-		return nil
-	}
-	vars, ok := rawVars.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf(".vars must map to a table")
+	baseLink.readType = readType(ctx.ReadType)
+	if err := baseLink.readType.Validate(); err != nil {
+		return err
 	}
 
 	// check for duplicate keys for ctx.vars and ctx.enc.vars
-	for varName, rawCfg := range vars {
-		if _, ok := linkMap[varName]; ok {
-			return fmt.Errorf("%s: duplicate key present in ctx and ctx.enc", varName)
-		}
-		switch cfgMap := rawCfg.(type) {
-		case string:
-			linkMap[varName] = &Link{
-				Name:  varName,
-				Value: cfgMap,
+	for k, v := range ctx.Vars {
+		if _, ok := linkMap[k]; ok {
+			return fmt.Errorf("%s: duplicate key present in ctx and ctx.enc", k)
+		} else if IsSimpleValue(v) {
+			linkMap[k] = &Link{
+				SearchName: k,
+				Value:      v,
 			}
-		case map[string]interface{}:
-			linkMap[varName], err = parseLinkMap(varName, &baseLink, cfgMap)
-			if err != nil {
-				return fmt.Errorf("%s: %w", varName, err)
+		} else if cfgMap, ok := v.(map[string]interface{}); ok {
+			if linkMap[k], err = parseLinkMap(k, &baseLink, cfgMap); err != nil {
+				return fmt.Errorf("%s: %w", k, err)
 			}
-		default:
-			return fmt.Errorf("%s: %s is an unsupported type", varName, cfgMap)
+		} else {
+			return fmt.Errorf("%s: %T is an unsupported type", k, v)
 		}
 	}
 	return nil
 }
 
-// convenience function for passing env.enc variables to decodeEnv
-func decodeEncrypted(linkMap LinkMap, env CfgMap) error {
-	// treat enc key as a nested configMap
-	enc, ok := env["enc"]
-	if !ok {
-		return nil
-	}
-	rawEnc, ok := enc.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf(".enc must map to a table")
-	}
-
-	// parse through encrypted variables first
-	err := decodeEnv(linkMap, rawEnc)
+// convenience function for passing ctx.enc variables to decodeEnv
+func decodeEncVars(linkMap LinkMap, ctx context) error {
+	err := decodeVars(linkMap, ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("decondeEncVars: %w", err)
 	}
-	// since env.enc is always called first, mark all output Links as encrypted
+	// since ctx.enc should always be called first, mark all output Links as encrypted
 	for key, link := range linkMap {
 		link.encrypted = true
 		linkMap[key] = link
@@ -378,7 +371,7 @@ func parseLinkMap(varName string, baseLink *Link, cfgMap CfgMap) (*Link, error) 
 	for k, v := range cfgMap {
 		switch k {
 		case "name":
-			if link.Name, ok = v.(string); !ok {
+			if link.SearchName, ok = v.(string); !ok {
 				return nil, fmt.Errorf("%s.name must be a string", varName)
 			}
 		case "path":
@@ -448,8 +441,9 @@ func parseLinkMap(varName string, baseLink *Link, cfgMap CfgMap) (*Link, error) 
 	}
 	// if name is not defined: `var = "value"`
 	// then set link.Name to the key name, "var" in this case
+	link.KeyName = varName
 	if _, ok := cfgMap["name"]; !ok {
-		link.Name = varName
+		link.SearchName = varName
 	}
 
 	return &link, nil

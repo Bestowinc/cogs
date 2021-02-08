@@ -40,10 +40,12 @@ const (
 // Validate ensures that a string is a valid readType enum
 func (t readType) Validate() error {
 	switch t {
-	case rDotenv, rJSON, rYAML, rJSONComplex, rTOMLComplex, rWhole:
+	case rDotenv, rJSON, rYAML, rTOML,
+		rJSONComplex, rYAMLComplex, rTOMLComplex, rWhole,
+		deferred:
 		return nil
 	default: // deferred readType should not be validated
-		return fmt.Errorf("%s is an invalid linkType", string(t))
+		return fmt.Errorf("%s is an invalid linkType", t.String())
 	}
 }
 
@@ -240,11 +242,11 @@ func (vi *visitor) SetValue(link *Link) (err error) {
 
 	// 2. check if link.SubPath value has been used in a previous SetValue call
 	if flatMap, ok := vi.visited[link.SubPath]; ok {
-		if link.Value, ok = flatMap[link.Name]; !ok {
-			return fmt.Errorf("unable to find %s", link.Name)
+		if link.Value, ok = flatMap[link.SearchName]; !ok {
+			return fmt.Errorf("unable to find %s", link.SearchName)
 		}
 		if !IsSimpleValue(link.Value) {
-			return fmt.Errorf("%s of type %T is not a simple value", link.Name, link.Value)
+			return fmt.Errorf("%s of type %T is not a simple value", link.SearchName, link.Value)
 		}
 		return nil
 	}
@@ -266,7 +268,7 @@ func (vi *visitor) SetValue(link *Link) (err error) {
 
 	if !supportedKind {
 		return fmt.Errorf("%s: NodeKind/readType unsupported: %s/%s",
-			link.Name, kindStr[node.Kind], link.readType)
+			link.SearchName, kindStr[node.Kind], link.readType)
 	}
 
 	cachedMap := make(map[string]interface{})
@@ -307,11 +309,11 @@ func (vi *visitor) visitComplex(link *Link) (err error) {
 		if !ok {
 			return fmt.Errorf("path does not resolve to a map: %T", v)
 		}
-		if link.Value, ok = complexMap[link.Name]; !ok {
-			return fmt.Errorf("unable to find %s", link.Name)
+		if link.Value, ok = complexMap[link.SearchName]; !ok {
+			return fmt.Errorf("unable to find %s", link.SearchName)
 		}
 		if IsSimpleValue(link.Value) {
-			return fmt.Errorf("%s of type %T is not a complex value", link.Name, link.Value)
+			return fmt.Errorf("%s of type %T is not a complex value", link.SearchName, link.Value)
 		}
 		return nil
 	}
@@ -363,7 +365,7 @@ func visitDotenv(cache map[string]interface{}, node *yaml.Node) (err error) {
 	if err = node.Decode(&strEnv); err != nil {
 		var sliceEnv []string
 		if err := node.Decode(&sliceEnv); err != nil {
-			return fmt.Errorf("Unable to decode node kind: %s to dotenv format", kindStr[node.Kind])
+			return fmt.Errorf("Unable to decode node kind %s to dotenv format: %w", kindStr[node.Kind], err)
 		}
 		strEnv = strings.Join(sliceEnv, "\n")
 	}
@@ -394,7 +396,7 @@ func visitMap(cache map[string]interface{}, node *yaml.Node, rType readType) err
 	}
 	unmarshal, err := rType.GetUnmarshal()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "visitMap")
 	}
 	return unmarshal([]byte(strEnv), &cache)
 }

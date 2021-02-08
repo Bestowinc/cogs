@@ -1,7 +1,6 @@
 #! /usr/bin/env bash
 
 go build -o ./tmp_cogs ./cmd/cogs
-trap 'rm ./tmp_cogs' ERR
 ./tmp_cogs gen docker basic.cog.toml
 ./tmp_cogs gen sops basic.cog.toml
 ./tmp_cogs gen kustomize basic.cog.toml

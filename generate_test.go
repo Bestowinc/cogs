@@ -81,7 +81,7 @@ func TestGenerate(t *testing.T) {
 				t.Errorf("toml.Load: %s", err)
 			}
 			cogName := tree.Get("name").(string)
-			config, err := generate(tc.env, tree, &testGear{})
+			config, err := generate(tc.env, tree, &testGear{Name: tc.env})
 			// TODO implement (err cogError) Unwrap() error { return err.err } so that "%w" directive is used
 			if diff := cmp.Diff(fmt.Errorf("%s", tc.err), fmt.Errorf("%s", err), AllowUnexported); diff != "" {
 				t.Errorf("toml[%s], env[%s]: (-expected err +actual err)\n-%s", cogName, tc.env, diff)
@@ -143,10 +143,10 @@ func (g *testGear) SetName(name string) {
 }
 
 // ResolveMap is used to satisfy the Generator interface
-func (g *testGear) ResolveMap(env CfgMap) (CfgMap, error) {
+func (g *testGear) ResolveMap(ctx baseContext) (CfgMap, error) {
 	var err error
 
-	g.linkMap, err = parseEnv(env)
+	g.linkMap, err = parseCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
