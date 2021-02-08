@@ -21,7 +21,7 @@ var RecursionLimit int = 12
 
 // Link holds all the data needed to resolve one string key value pair
 type Link struct {
-	KeyName    string      // the key name definex in the context file
+	KeyName    string      // the key name defined in the context file
 	SearchName string      // same as keyName unless redefined using the `name` key: var.name="other_name"
 	Value      interface{} // Holds a complex or simple value for the given Link
 	Path       string      // filepath string where Link can be resolved
@@ -36,7 +36,7 @@ type Link struct {
 // String holds the string representation of a Link struct
 func (c Link) String() string {
 	return fmt.Sprintf(`Link{
-	KeName: %s
+	KeyName: %s
 	SearchName: %s
 	Value: %s
 	Path: %s
