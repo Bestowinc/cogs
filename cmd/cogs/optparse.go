@@ -19,7 +19,7 @@ func ifErr(err error) {
 	}
 }
 
-func getRawValue(cfgMap map[string]interface{}, keyList []string, delimiter string) (string, error) {
+func getRawValue(cfgMap cogs.CfgMap, keyList []string, delimiter string) (string, error) {
 	var values []string
 	// Interpret --sep='\n' and --sep='\t' as newlines and tabs
 	switch delimiter {
@@ -48,7 +48,7 @@ func getRawValue(cfgMap map[string]interface{}, keyList []string, delimiter stri
 
 // modKeys should always return a flat associative array of strings
 // coercing any interface{} value into a string
-func modKeys(cfgMap map[string]interface{}, modFn ...func(string) string) map[string]string {
+func modKeys(cfgMap cogs.CfgMap, modFn ...func(string) string) map[string]string {
 	newCfgMap := make(map[string]string)
 	for k, v := range cfgMap {
 		for _, fn := range modFn {
