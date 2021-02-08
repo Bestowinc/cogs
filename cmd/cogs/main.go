@@ -73,7 +73,7 @@ func main() {
 
 		format, err := conf.validate()
 		ifErr(err)
-		cfgMap, err := cogs.Generate(conf.Ctx, conf.File, format, conf.filterCfgMap)
+		cfgMap, err := cogs.Generate(conf.Ctx, conf.File, format, conf.filterLinks)
 		ifErr(err)
 
 		switch format {

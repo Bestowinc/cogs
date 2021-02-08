@@ -129,16 +129,16 @@ func IsSimpleValue(i interface{}) bool {
 }
 
 // Exclude produces a laundered map with exclusionList values missing
-func Exclude(exclusionList []string, cfgMap CfgMap) CfgMap {
-	newCfgMap := make(map[string]interface{})
+func Exclude(exclusionList []string, linkMap LinkMap) LinkMap {
+	newLinkMap := make(LinkMap)
 
-	for k := range cfgMap {
+	for k := range linkMap {
 		if InList(k, exclusionList) {
 			continue
 		}
-		newCfgMap[k] = cfgMap[k]
+		newLinkMap[k] = linkMap[k]
 	}
-	return newCfgMap
+	return newLinkMap
 }
 
 // InList verifies that a given string is in a string slice

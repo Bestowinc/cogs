@@ -2,6 +2,7 @@
 
 go build -o ./tmp_cogs ./cmd/cogs
 ./tmp_cogs gen docker basic.cog.toml
+./tmp_cogs gen docker basic.cog.toml --keys=var --out=toml
 ./tmp_cogs gen sops basic.cog.toml
 ./tmp_cogs gen kustomize basic.cog.toml
 ./tmp_cogs gen inheritor advanced.cog.toml

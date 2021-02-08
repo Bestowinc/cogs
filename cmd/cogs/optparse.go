@@ -59,9 +59,9 @@ func modKeys(cfgMap cogs.CfgMap, modFn ...func(string) string) map[string]string
 	return newCfgMap
 }
 
-// filterCfgMap retains only key names passed to --keys
-func (c *Conf) filterCfgMap(cfgMap cogs.CfgMap) (cogs.CfgMap, error) {
-	if cfgMap == nil {
+// filterLinks retains only key names passed to --keys
+func (c *Conf) filterLinks(linkMap cogs.LinkMap) (cogs.LinkMap, error) {
+	if linkMap == nil {
 		return nil, nil
 	}
 
@@ -70,17 +70,17 @@ func (c *Conf) filterCfgMap(cfgMap cogs.CfgMap) (cogs.CfgMap, error) {
 	var notList []string
 	if c.Not != "" {
 		notList = strings.Split(c.Not, ",")
-		cfgMap = cogs.Exclude(notList, cfgMap)
+		linkMap = cogs.Exclude(notList, linkMap)
 	}
 	if c.Keys == "" {
-		return cfgMap, nil
+		return linkMap, nil
 	}
 
 	keyList := strings.Split(c.Keys, ",")
-	newCfgMap := make(map[string]interface{})
+	newCfgMap := make(cogs.LinkMap)
 	for _, key := range keyList {
 		var ok bool
-		if newCfgMap[key], ok = cfgMap[key]; !ok {
+		if newCfgMap[key], ok = linkMap[key]; !ok {
 			hint := ""
 			if cogs.InList(key, notList) {
 				hint = fmt.Sprintf("\n\n--not=%s and --keys=%s were called\n"+

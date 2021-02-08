@@ -51,8 +51,8 @@ type LinkMap map[string]*Link
 // CfgMap is meant to represent a map with values of one or more unknown types
 type CfgMap map[string]interface{}
 
-// EnvFilter if a function meant to filter a CfgMap
-type EnvFilter func(CfgMap) (CfgMap, error)
+// LinkFilter if a function meant to filter a LinkMap
+type LinkFilter func(LinkMap) (LinkMap, error)
 
 // Resolver is meant to define an object that returns the final string map to be used in a configuration
 // resolving any paths and sub paths defined in the underling config map
@@ -74,7 +74,7 @@ type Gear struct {
 	tree       *toml.Tree // TOML object tree
 	outputType Format     // desired output type of the marshalled Gear
 	recursions uint       // the amount of recursions for the current Gear
-	filter     EnvFilter
+	filter     LinkFilter
 }
 
 // SetName sets the gear name to the provided string
@@ -87,15 +87,10 @@ func (g *Gear) SetName(name string) {
 func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 	var err error
 
-	if ctx.Vars, err = g.filter(ctx.Vars); err != nil {
+	if g.linkMap, err = parseCtx(ctx); err != nil {
 		return nil, err
 	}
-	if ctx.Enc.Vars, err = g.filter(ctx.Enc.Vars); err != nil {
-		return nil, err
-	}
-
-	g.linkMap, err = parseCtx(ctx)
-	if err != nil {
+	if g.linkMap, err = g.filter(g.linkMap); err != nil {
 		return nil, err
 	}
 
@@ -205,7 +200,7 @@ func (g *Gear) getLinkFilePath(linkPath string) string {
 }
 
 // Generate is a top level command that takes an context name argument and cogfilepath to return a string map
-func Generate(ctxName, cogPath string, outputType Format, filter EnvFilter) (CfgMap, error) {
+func Generate(ctxName, cogPath string, outputType Format, filter LinkFilter) (CfgMap, error) {
 	var tree *toml.Tree
 	var err error
 
