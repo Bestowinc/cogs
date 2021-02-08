@@ -20,16 +20,15 @@ var RecursionLimit int = 12
 
 // Link holds all the data needed to resolve one string key value pair
 type Link struct {
-	Name         string      // defaults to key name in cog file unless var.name="other_name" is used
-	Value        string      // Link.ComplexValue should be nil if Link.Value is a non-empty string("")
-	ComplexValue interface{} // Link.Value should be empty string("") if Link.ComplexValue is non-nil
-	Path         string      // filepath string where Link can be resolved
-	SubPath      string      // object traversal string used to resolve Link if not at top level of document (yq syntax)
-	encrypted    bool        // indicates if decryption is needed to resolve Link.Value
-	remote       bool        // indicates if an HTTP request is needed to return the given document
-	header       http.Header // HTTP request headers
-	keys         []string    // key filter for Gear read types
-	readType     readType
+	Name      string      // defaults to key name in cog file unless var.name="other_name" is used
+	Value     interface{} // Holds a complex or simple value for the given Link
+	Path      string      // filepath string where Link can be resolved
+	SubPath   string      // object traversal string used to resolve Link if not at top level of document (yq syntax)
+	encrypted bool        // indicates if decryption is needed to resolve Link.Value
+	remote    bool        // indicates if an HTTP request is needed to return the given document
+	header    http.Header // HTTP request headers
+	keys      []string    // key filter for Gear read types
+	readType  readType
 }
 
 // String holds the string representation of a Link struct
@@ -81,7 +80,7 @@ func (g *Gear) SetName(name string) {
 }
 
 // ResolveMap outputs the flat associative string, resolving potential filepath pointers
-// held by Link objects by calling the .ResolveValue() method
+// held by Link objects by calling the .SetValue() method
 func (g *Gear) ResolveMap(env CfgMap) (CfgMap, error) {
 	var err error
 
@@ -116,7 +115,7 @@ func (g *Gear) ResolveMap(env CfgMap) (CfgMap, error) {
 				// read plaintext file into bytes
 				loadFileFunc := readFile
 				// check the path string is a valid URL
-				if link.remote = isValidUrl(link.Path); link.remote {
+				if link.remote = isValidURL(link.Path); link.remote {
 					// cheat to fulfill PathGroup interface
 					loadFileFunc = func(path string) ([]byte, error) {
 						return getHTTPFile(path, link.header)
@@ -176,8 +175,8 @@ func (g *Gear) ResolveMap(env CfgMap) (CfgMap, error) {
 
 	// final output
 	cfgOut := make(CfgMap)
-	for cogName, link := range g.linkMap {
-		cfgOut[cogName], err = OutputCfg(link, g.outputType)
+	for key, link := range g.linkMap {
+		cfgOut[key], err = OutputCfg(link, g.outputType)
 		if err != nil {
 			return nil, err
 		}
@@ -191,7 +190,7 @@ func (g *Gear) getLinkFilePath(linkPath string) string {
 	if linkPath == selfPath {
 		return g.filePath
 	}
-	if path.IsAbs(linkPath) || isValidUrl(linkPath) {
+	if path.IsAbs(linkPath) || isValidURL(linkPath) {
 		return linkPath
 	}
 	dir, err := os.Getwd()

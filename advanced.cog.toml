@@ -2,7 +2,7 @@ name = "advanced_example"
 
 # `base` is a standalone TOML object aka table that is not part of the context aka <ctx> logic
 # ==========================================================
-# A COGS CONTEXT IS DEFINED BY THE PRESENCE OF THE KEY `var`
+# A COGS CONTEXT IS DEFINED BY THE PRESENCE OF THE KEY `vars`
 # otherwise the TOML table is treated normally
 # ==========================================================
 # `base` could just as well exist in another file, say JSON in this example, and resolve to the same values
@@ -36,7 +36,7 @@ var3 = {path = [[], ".base.json_string"], type ="json"}
 path = ["test_files/external_inheritor.json", ".base"]
 # since base.json is not a flat string to string map
 # type must be set to JSONcomplex akak "json{}" instead of the inherited json type
-type = "json{}"
+type = "json"
 [external_inheritor.vars]
 var1.path = []
 var2.path = []

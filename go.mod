@@ -15,6 +15,7 @@ require (
 	github.com/drone/envsubst v1.0.3-0.20200804185402-58bc65f69603
 	github.com/frankban/quicktest v1.11.1 // indirect
 	github.com/goccy/go-yaml v1.8.6 // indirect
+	github.com/gogo/protobuf v1.2.1
 	github.com/golang/snappy v0.0.2 // indirect
 	github.com/google/go-cmp v0.5.2
 	github.com/hashicorp/errwrap v1.1.0 // indirect

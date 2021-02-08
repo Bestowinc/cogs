@@ -155,7 +155,7 @@ func (g *testGear) ResolveMap(env CfgMap) (CfgMap, error) {
 	linkOut := make(map[string]interface{})
 
 	for k, link := range g.linkMap {
-		linkOut[k] = g.ResolveValue(link)
+		linkOut[k] = ResolveValue(link)
 	}
 	return linkOut, nil
 
@@ -165,10 +165,12 @@ func (g *testGear) ResolveMap(env CfgMap) (CfgMap, error) {
 // if Path resolves to a valid file the file byte value
 // is passed to a file reader object, attempting to serialize the contents of
 // the file if type is supported
-func (g *testGear) ResolveValue(c *Link) string {
+func ResolveValue(c *Link) string {
 	// if Path is empty or Value is non empty
-	if c.Path == "" || c.Value != "" {
-		return c.Value
+	if c.Path == "" {
+		if val, ok := c.Value.(string); ok {
+			return val
+		}
 	}
 
 	pathStr := "|path|"

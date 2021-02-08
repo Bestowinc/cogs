@@ -23,24 +23,52 @@ type readType string
 
 const (
 	// read format overrides
-	rDotenv      readType = "dotenv"
-	rJSON        readType = "json"
-	rJSONComplex readType = "json{}" // complex json key value pair: {"k":{"v1":[],"v2":[]}}
-
+	rDotenv readType = "dotenv"
+	rJSON   readType = "json"
+	rYAML   readType = "yaml"
+	rTOML   readType = "toml"
+	// complex values of a given markup type are appended with "{}"
+	rJSONComplex readType = "json{}" // complex JSON key value pair: {"k":{"v1":[],"v2":[]}}
+	rYAMLComplex readType = "yaml{}" // complex YAML key value pair: {k: {v1: [], v2: []}}
+	rTOMLComplex readType = "toml{}" // complex TOML key value pair: k = {v1 = [], v2 = []}
 	// read format derived from filepath suffix
-	rWhole   readType = "whole" // indicates to associate the entirety of a file to the given key name
 	deferred readType = ""      // defer file config type to filename suffix
+	rWhole   readType = "whole" // indicates to associate the entirety of a file to the given key name
 	rGear    readType = "gear"  // treat TOML table as a nested gear object
 )
 
 // Validate ensures that a string is a valid readType enum
 func (t readType) Validate() error {
 	switch t {
-	case rDotenv, rJSON, rJSONComplex, rWhole:
+	case rDotenv, rJSON, rYAML, rJSONComplex, rTOMLComplex, rWhole:
 		return nil
 	default: // deferred readType should not be validated
 		return fmt.Errorf("%s is an invalid linkType", string(t))
 	}
+}
+
+// isComplex returns true if the readType is complex
+func (t readType) isComplex() bool {
+	switch t {
+	case rJSONComplex, rYAMLComplex, rTOMLComplex, rWhole:
+		return true
+	}
+	return false
+}
+
+type unmarshalFn func([]byte, interface{}) error
+
+// GetUnmarshal returns the corresponding function to unmarshal a given read type
+func (t readType) GetUnmarshal() (unmarshalFn, error) {
+	switch t {
+	case rJSON, rJSONComplex:
+		return json.Unmarshal, nil
+	case rTOML, rTOMLComplex:
+		return toml.Unmarshal, nil
+	case rYAML, rYAMLComplex:
+		return toml.Unmarshal, nil
+	}
+	return nil, fmt.Errorf("Unsupported type for GetUnmarshal: %s", t)
 }
 
 func (t readType) String() string {
@@ -49,8 +77,16 @@ func (t readType) String() string {
 		return string(rDotenv)
 	case rJSON:
 		return "flat json"
+	case rYAML:
+		return "flat yaml"
+	case rTOML:
+		return "flat toml"
 	case rJSONComplex:
 		return "complex json"
+	case rYAMLComplex:
+		return "complex yaml"
+	case rTOMLComplex:
+		return "complex toml"
 	case rWhole:
 		return "whole file"
 	case rGear:
@@ -182,7 +218,7 @@ func NewDotenvVisitor(buf []byte) (Visitor, error) {
 func newVisitor(node *yaml.Node) Visitor {
 	return &visitor{
 		rootNode:       node,
-		visited:        make(map[string]map[string]string),
+		visited:        make(map[string]map[string]interface{}),
 		visitedComplex: make(map[string]interface{}),
 		evaluator:      yqlib.NewAllAtOnceEvaluator(),
 	}
@@ -190,29 +226,30 @@ func newVisitor(node *yaml.Node) Visitor {
 
 type visitor struct {
 	rootNode       *yaml.Node
-	visited        map[string]map[string]string
+	visited        map[string]map[string]interface{}
 	visitedComplex map[string]interface{}
 	evaluator      yqlib.Evaluator
 }
 
 // SetValue assigns the Value for a given Link using the existing Link.Path and Link.SubPath
 func (vi *visitor) SetValue(link *Link) (err error) {
-	switch link.readType {
-	case rWhole, rJSONComplex:
+	// 1. check if the read type is "complex{}"
+	if link.readType.isComplex() {
 		return vi.visitComplex(link)
-	case rGear:
-		panic("rGear unsupported at this time")
 	}
 
-	// 1. check if link.SubPath value has been used in a previous SetValue call
+	// 2. check if link.SubPath value has been used in a previous SetValue call
 	if flatMap, ok := vi.visited[link.SubPath]; ok {
 		if link.Value, ok = flatMap[link.Name]; !ok {
 			return fmt.Errorf("unable to find %s", link.Name)
 		}
+		if !IsSimpleValue(link.Value) {
+			return fmt.Errorf("%s of type %T is not a simple value", link.Name, link.Value)
+		}
 		return nil
 	}
 
-	// 2. grab the yaml node corresponding to the subpath
+	// 3. grab the yaml node corresponding to the subpath
 	node, err := vi.get(link.SubPath)
 	if err != nil {
 		return err
@@ -232,16 +269,16 @@ func (vi *visitor) SetValue(link *Link) (err error) {
 			link.Name, kindStr[node.Kind], link.readType)
 	}
 
-	cachedMap := make(map[string]string)
+	cachedMap := make(map[string]interface{})
 
-	// 3. traverse node based on read type
+	// 4. traverse node based on read type
 	switch link.readType {
-	case rDotenv:
-		err = visitDotenv(&cachedMap, node)
-	case rJSON:
-		err = visitJSON(cachedMap, node)
 	case deferred:
 		err = node.Decode(cachedMap)
+	case rJSON, rYAML, rTOML:
+		err = visitMap(cachedMap, node, link.readType)
+	case rDotenv:
+		err = visitDotenv(cachedMap, node)
 	default:
 		err = fmt.Errorf("unsupported readType: %s", link.readType)
 	}
@@ -249,10 +286,10 @@ func (vi *visitor) SetValue(link *Link) (err error) {
 		return errors.Wrap(err, "SetValue")
 	}
 
-	// 4. add value to cache
+	// 5. add value to cache
 	vi.visited[link.SubPath] = cachedMap
 
-	// 5. recurse to access cache
+	// 6. recurse to access cache
 	return vi.SetValue(link)
 
 }
@@ -262,7 +299,7 @@ func (vi *visitor) visitComplex(link *Link) (err error) {
 	// 1. check if link.SubPath and readType has been used before
 	if v, ok := vi.visitedComplex[link.SubPath]; ok {
 		if link.readType == rWhole {
-			link.ComplexValue = v
+			link.Value = v
 
 			return nil
 		}
@@ -270,8 +307,11 @@ func (vi *visitor) visitComplex(link *Link) (err error) {
 		if !ok {
 			return fmt.Errorf("path does not resolve to a map: %T", v)
 		}
-		if link.ComplexValue, ok = complexMap[link.Name]; !ok {
+		if link.Value, ok = complexMap[link.Name]; !ok {
 			return fmt.Errorf("unable to find %s", link.Name)
+		}
+		if IsSimpleValue(link.Value) {
+			return fmt.Errorf("%s of type %T is not a complex value", link.Name, link.Value)
 		}
 		return nil
 	}
@@ -285,11 +325,9 @@ func (vi *visitor) visitComplex(link *Link) (err error) {
 	switch link.readType {
 	case rWhole:
 		err = node.Decode(&i)
-	case rJSONComplex:
+	case rJSONComplex, rTOMLComplex:
 		i = make(map[string]interface{})
-		err = visitJSONComplex(i.(map[string]interface{}), node)
-	case rGear:
-		panic("rGear unsupported at this time")
+		err = visitComplex(i.(map[string]interface{}), node, link.readType)
 	default:
 		err = fmt.Errorf("unsupported readType: %s", link.readType)
 	}
@@ -319,7 +357,7 @@ func (vi *visitor) get(subPath string) (*yaml.Node, error) {
 	return nodes[0].Node, nil
 }
 
-func visitDotenv(cache *map[string]string, node *yaml.Node) (err error) {
+func visitDotenv(cache map[string]interface{}, node *yaml.Node) (err error) {
 	var strEnv string
 
 	if err = node.Decode(&strEnv); err != nil {
@@ -329,11 +367,18 @@ func visitDotenv(cache *map[string]string, node *yaml.Node) (err error) {
 		}
 		strEnv = strings.Join(sliceEnv, "\n")
 	}
-	*cache, err = godotenv.Unmarshal(strEnv)
+	dotenvMap := make(map[string]string)
+	dotenvMap, err = godotenv.Unmarshal(strEnv)
+	if err != nil {
+		return err
+	}
+	for k, v := range dotenvMap {
+		cache[k] = v
+	}
 	return err
 }
 
-func visitJSON(cache map[string]string, node *yaml.Node) error {
+func visitMap(cache map[string]interface{}, node *yaml.Node, rType readType) error {
 	if err := node.Decode(&cache); err == nil {
 		return nil
 	}
@@ -347,10 +392,14 @@ func visitJSON(cache map[string]string, node *yaml.Node) error {
 		}
 		strEnv = strings.Join(sliceEnv, "\n")
 	}
-	return json.Unmarshal([]byte(strEnv), &cache)
+	unmarshal, err := rType.GetUnmarshal()
+	if err != nil {
+		return err
+	}
+	return unmarshal([]byte(strEnv), &cache)
 }
 
-func visitJSONComplex(cache map[string]interface{}, node *yaml.Node) error {
+func visitComplex(cache map[string]interface{}, node *yaml.Node, rType readType) error {
 	if err := node.Decode(&cache); err == nil {
 		return nil
 	}
@@ -359,5 +408,9 @@ func visitJSONComplex(cache map[string]interface{}, node *yaml.Node) error {
 	if err := node.Decode(&strEnv); err != nil {
 		return fmt.Errorf("Unable to decode node kind: %s to complex JSON format: %w", kindStr[node.Kind], err)
 	}
-	return json.Unmarshal([]byte(strEnv), &cache)
+	unmarshal, err := rType.GetUnmarshal()
+	if err != nil {
+		return fmt.Errorf("visitComplex: %w", err)
+	}
+	return unmarshal([]byte(strEnv), &cache)
 }
