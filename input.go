@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/drone/envsubst"
@@ -160,6 +161,7 @@ var kindStr = map[yaml.Kind]string{
 // Visitor allows a query path to return the underlying value for a given visitor
 type Visitor interface {
 	SetValue(*Link) error
+	Errors() error
 }
 
 // NewJSONVisitor returns a visitor object that satisfies the Visitor interface
@@ -223,6 +225,7 @@ func newVisitor(node *yaml.Node) Visitor {
 		visited:        make(map[string]map[string]interface{}),
 		visitedComplex: make(map[string]interface{}),
 		evaluator:      yqlib.NewAllAtOnceEvaluator(),
+		missing:        make(map[string][]string), // denotes links unable to be found
 	}
 }
 
@@ -231,6 +234,40 @@ type visitor struct {
 	visited        map[string]map[string]interface{}
 	visitedComplex map[string]interface{}
 	evaluator      yqlib.Evaluator
+	missing        map[string][]string // denotes links unable to be found
+}
+
+func (vi *visitor) Errors() error {
+	var errMsg string
+	for k, v := range vi.missing {
+		errMsg = errMsg + "\n  " + k + ":"
+		sort.Strings(v)
+		errMsg = errMsg + "\n      " + strings.Join(v, "\n      ")
+	}
+
+	if errMsg != "" {
+		return errors.New(errMsg)
+	}
+	return nil
+}
+
+func (vi *visitor) getLink(link *Link, searchMap map[string]interface{}) (interface{}, bool) {
+	if value, ok := searchMap[link.SearchName]; ok {
+		return value, ok
+	}
+	// link is unable to be found in the searchMap at this point
+	subPath := "."
+	if link.SubPath != "" {
+		subPath = link.SubPath
+	}
+
+	errKey := fmt.Sprintf("[\"%s\", \"%s\"]", link.Path, subPath)
+	errVal := fmt.Sprintf("unable to find key \"%s\"", link.SearchName)
+	if !InList(errVal, vi.missing[errKey]) {
+		vi.missing[errKey] = append(vi.missing[errKey], errVal)
+	}
+
+	return nil, false
 }
 
 // SetValue assigns the Value for a given Link using the existing Link.Path and Link.SubPath
@@ -242,12 +279,14 @@ func (vi *visitor) SetValue(link *Link) (err error) {
 
 	// 2. check if link.SubPath value has been used in a previous SetValue call
 	if flatMap, ok := vi.visited[link.SubPath]; ok {
-		if link.Value, ok = flatMap[link.SearchName]; !ok {
-			return fmt.Errorf("unable to find %s", link.SearchName)
+		if link.Value, ok = vi.getLink(link, flatMap); !ok {
+			return nil
 		}
+
 		if !IsSimpleValue(link.Value) {
 			return fmt.Errorf("%s of type %T is not a simple value", link.SearchName, link.Value)
 		}
+
 		return nil
 	}
 
@@ -305,13 +344,16 @@ func (vi *visitor) visitComplex(link *Link) (err error) {
 
 			return nil
 		}
+
 		complexMap, ok := v.(map[string]interface{})
 		if !ok {
 			return fmt.Errorf("path does not resolve to a map: %T", v)
 		}
-		if link.Value, ok = complexMap[link.SearchName]; !ok {
+
+		if link.Value, ok = vi.getLink(link, complexMap); !ok {
 			return fmt.Errorf("unable to find %s", link.SearchName)
 		}
+
 		if IsSimpleValue(link.Value) {
 			return fmt.Errorf("%s of type %T is not a complex value", link.SearchName, link.Value)
 		}
@@ -339,7 +381,7 @@ func (vi *visitor) visitComplex(link *Link) (err error) {
 	// 4. add value to cache
 	vi.visitedComplex[link.SubPath] = i
 	// 5. recurse to access cache
-	return vi.visitComplex(link)
+	return vi.SetValue(link)
 }
 
 func (vi *visitor) get(subPath string) (*yaml.Node, error) {

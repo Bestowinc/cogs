@@ -8,6 +8,7 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/pelletier/go-toml"
+	"go.uber.org/multierr"
 )
 
 // NoEnc decides whether to output encrypted variables or now
@@ -133,6 +134,7 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 		}
 	}
 
+	var errs error
 	for p, pGroup := range pathGroups {
 		var fileBuf []byte
 		// 2. for each distinct Path: generate a Reader object
@@ -164,12 +166,19 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 
 		// 4. traverse every Path and possible SubPath retrieving the Link.Values associated with it
 		for _, link := range pGroup.links {
-			err := visitor.SetValue(link)
-			if err != nil {
+			if err := visitor.SetValue(link); err != nil {
 				return nil, fmt.Errorf("%s: %w", link.KeyName, err)
 			}
 
 		}
+
+		// 5. add missing links to errs
+		if err := visitor.Errors(); err != nil {
+			errs = multierr.Append(errs, err)
+		}
+	}
+	if errs != nil {
+		return nil, errs
 	}
 
 	// final output

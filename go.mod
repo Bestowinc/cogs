@@ -9,7 +9,7 @@ require (
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.7 // indirect
 	github.com/Azure/go-autorest/autorest/to v0.4.0 // indirect
 	github.com/Azure/go-autorest/autorest/validation v0.3.1 // indirect
-	github.com/aws/aws-sdk-go v1.37.6 // indirect
+	github.com/aws/aws-sdk-go v1.37.7 // indirect
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
 	github.com/drone/envsubst v1.0.3-0.20200804185402-58bc65f69603
 	github.com/elliotchance/orderedmap v1.4.0 // indirect
@@ -36,6 +36,7 @@ require (
 	github.com/sirupsen/logrus v1.7.0 // indirect
 	go.mozilla.org/sops/v3 v3.6.1
 	go.opencensus.io v0.22.6 // indirect
+	go.uber.org/multierr v1.6.0
 	golang.org/x/oauth2 v0.0.0-20210201163806-010130855d6c // indirect
 	golang.org/x/term v0.0.0-20201210144234-2321bbc49cbf // indirect
 	golang.org/x/time v0.0.0-20201208040808-7e3f01d25324 // indirect
