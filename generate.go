@@ -297,6 +297,7 @@ func parseCtx(ctx baseContext) (linkMap LinkMap, err error) {
 type baseContext struct {
 	Path     interface{} `mapstructure:",omitempty"`
 	ReadType string      `mapstructure:"type,omitempty"`
+	Name     string      `mapstructure:",omitempty"`
 	Vars     CfgMap      `mapstructure:",omitempty"`
 	Enc      context     `mapstructure:",omitempty"`
 }
@@ -305,6 +306,7 @@ func (b baseContext) toContext() context {
 	return context{
 		Path:     b.Path,
 		ReadType: b.ReadType,
+		Name:     b.Name,
 		Vars:     b.Vars,
 	}
 }
@@ -312,6 +314,7 @@ func (b baseContext) toContext() context {
 type context struct {
 	Path     interface{} `mapstructure:",omitempty"`
 	ReadType string      `mapstructure:"type,omitempty"`
+	Name     string      `mapstructure:",omitempty"`
 	Vars     CfgMap      `mapstructure:",omitempty"`
 }
 
@@ -325,7 +328,8 @@ func decodeVars(linkMap LinkMap, ctx context) error {
 			return err
 		}
 	}
-
+	// global search name
+	baseLink.SearchName = ctx.Name
 	// global type
 	baseLink.readType = readType(ctx.ReadType)
 	if err := baseLink.readType.Validate(); err != nil {
@@ -338,8 +342,8 @@ func decodeVars(linkMap LinkMap, ctx context) error {
 			return fmt.Errorf("%s: duplicate key present in ctx and ctx.enc", k)
 		} else if IsSimpleValue(v) {
 			linkMap[k] = &Link{
-				SearchName: k,
-				Value:      v,
+				KeyName: k,
+				Value:   v,
 			}
 		} else if cfgMap, ok := v.(map[string]interface{}); ok {
 			if linkMap[k], err = parseLinkMap(k, &baseLink, cfgMap); err != nil {
@@ -393,7 +397,6 @@ func parseLinkMap(varName string, baseLink *Link, cfgMap CfgMap) (*Link, error) 
 				return nil, fmt.Errorf("%s.type: %w", varName, err)
 			}
 		case "gear_keys":
-			panic("rGear unsupported at this time")
 			keysErr := fmt.Errorf("%s.keys must be a string or array of strings", varName)
 			link.keys = []string{}
 			slice, ok := v.([]interface{})
@@ -408,6 +411,7 @@ func parseLinkMap(varName string, baseLink *Link, cfgMap CfgMap) (*Link, error) 
 				link.keys = append(link.keys, str)
 
 			}
+			panic("rGear unsupported at this time")
 		case "header": // "net/http".Header is of type Header map[string][]string
 			link.header = make(http.Header)
 			headerErr := fmt.Errorf("%s.header must map to a string or array of strings", varName)
@@ -435,6 +439,12 @@ func parseLinkMap(varName string, baseLink *Link, cfgMap CfgMap) (*Link, error) 
 		}
 
 	}
+
+	// if Path is empty string
+	if link.Path == "" {
+		return nil, fmt.Errorf("%s does not have a value assigned or %s.path defined", varName, varName)
+	}
+
 	// if readType was not specified:
 	if _, ok := cfgMap["type"]; !ok {
 		if baseLink != nil {
@@ -448,6 +458,10 @@ func parseLinkMap(varName string, baseLink *Link, cfgMap CfgMap) (*Link, error) 
 	link.KeyName = varName
 	if _, ok := cfgMap["name"]; !ok {
 		link.SearchName = varName
+		// if ctx.name was set then and var.name was not defined then inherit SearchName from baseLink
+		if baseLink.SearchName != "" {
+			link.SearchName = baseLink.SearchName
+		}
 	}
 
 	return &link, nil
