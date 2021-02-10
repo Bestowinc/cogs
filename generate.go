@@ -8,6 +8,7 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/pelletier/go-toml"
+	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 )
 
@@ -254,7 +255,12 @@ func generate(ctxName string, tree *toml.Tree, gear Resolver) (CfgMap, error) {
 
 	ctxTree, ok := tree.Get(ctxName).(*toml.Tree)
 	if !ok {
-		return nil, fmt.Errorf("%s context missing from cog file", ctxName)
+		// TODO  ErrMissingContext = errorW{fmt:"%s: %s context missing from cog file"}
+		errMsg := fmt.Sprintf("%s context missing from cog file", ctxName)
+		if g, ok := gear.(*Gear); ok {
+			errMsg = g.filePath + ": " + errMsg
+		}
+		return nil, errors.New(errMsg)
 	}
 
 	var ctxMap map[string]interface{}
