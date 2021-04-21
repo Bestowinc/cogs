@@ -55,49 +55,34 @@ Options:
   --sep=<sep>      If --out=raw:    Delimits values with a <sep>arator.
 ```
 
-
 `cogs gen` - outputs a flat and serialized K:V array
 
-## spec overview:
-
-The below example can be compiled by running `cogs gen basic examples/basic.cog.toml`.
-
-Every cog manifest should have a name key that corresponds to a string.
+## annotated spec:
 
 ```toml
-name = "basic example"
-```
+name = "basic example" # every cog manifest should have a name key that corresponds to a string
 
-Key-value pairs for a context/ctx are defined under `<ctx>.vars`.
-```toml
+# key value pairs for a context/ctx are defined under <ctx>.vars
+# try running `cogs gen basic basic.cog.toml` to see what output cogs generates
 [basic.vars]
 var = "var_value"
 other_var = "other_var_value"
-```
 
-If `<var>.path` is given a string value,
-cogs will look for the key name of `<var>` in the file that that corresponds to the `<var>.path` key,
-returning the corresponding value.
-
-```toml
+# if <var>.path is given a string value,
+# cogs will look for the key name of <var> in the file that that corresponds to the <var>.path key,
+# returning the corresponding value
 manifest_var.path = "./test_files/manifest.yaml"
-```
+# try removing manifest_var from "./test_files/manifest.yaml" and see what happens
 
-Try removing `manifest_var` from `./test_files/manifest.yaml` and see what happens.
-
-Some variables can set an explicit key name to look for instead of defaulting to look for
-the key name `<var>`.
-If `<var>.name` is defined then cogs will look for a key name that matches `<var>.name`.
-
-```toml
+# some variables can set an explicit key name to look for instead of defaulting to look for
+# the key name "<var>":
+# if <var>.name is defined then cogs will look for a key name that matches <var>.name
 look_for_manifest_var.path = "./test_files/manifest.yaml"
 look_for_manifest_var.name = "manifest_var"
-```
 
-Dangling variable names without a corresponds path should return an error.
-
-```toml
-empty_var.name = "some_name"
+# dangling variable names should return an error
+# try uncommenting the line below and run `cogs gen basic basic.cog.toml`:
+# empty_var.name = "some_name"
 ```
 
 ## example data:
