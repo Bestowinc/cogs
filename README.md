@@ -58,7 +58,7 @@ Options:
 
 `cogs gen` - outputs a flat and serialized K:V array
 
-## annotated spec:
+## spec overview:
 
 The below example can be compiled by running `cogs gen basic examples/basic.cog.toml`.
 
