@@ -152,7 +152,7 @@ func (vi *visitor) Errors() []error {
 		errMsg = errMsg + "\n      " + strings.Join(v, "\n      ")
 		// do not call errors.New because we do not want a
 		// stack trace to be emitted when "%+v" is called on each error
-		errs = append(errs, fmt.Errorf(errMsg))
+		errs = append(errs, errors.New(errMsg))
 	}
 
 	if len(errs) > 0 {
