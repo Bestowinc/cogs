@@ -92,7 +92,7 @@ func (c *Conf) validate() (format cogs.Format, err error) {
 		return "", nil
 	}
 	if format = cogs.Format(conf.Output); format.Validate() != nil {
-		return "", fmt.Errorf("invalid opt: --out" + conf.Output)
+		return "", fmt.Errorf("invalid opt: --out %s", conf.Output)
 	}
 
 	switch {

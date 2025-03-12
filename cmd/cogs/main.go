@@ -6,15 +6,16 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Bestowinc/cogs"
 	"github.com/docopt/docopt-go"
 	"github.com/joho/godotenv"
 	"github.com/pelletier/go-toml"
-	logging "gopkg.in/op/go-logging.v1"
+	"gopkg.in/op/go-logging.v1"
 	"gopkg.in/yaml.v3"
+
+	"github.com/Bestowinc/cogs"
 )
 
-const cogsVersion = "0.9.1"
+const cogsVersion = "0.10.0"
 const usage string = `
 COGS COnfiguration manaGement S
 

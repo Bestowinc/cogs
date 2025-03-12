@@ -3,7 +3,7 @@ package cogs
 import (
 	"net/http"
 
-	"go.mozilla.org/sops/v3/decrypt"
+	"github.com/getsops/sops/v3/decrypt"
 )
 
 func decryptFile(filePath string) ([]byte, error) {
