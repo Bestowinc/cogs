@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -298,7 +299,7 @@ func (vi *visitor) get(subPath string) (*yaml.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	nodes := []*yqlib.CandidateNode{}
+	var nodes []*yqlib.CandidateNode
 	for el := list.Front(); el != nil; el = el.Next() {
 		n := el.Value.(*yqlib.CandidateNode)
 		nodes = append(nodes, n)
@@ -318,6 +319,14 @@ func visitDotenv(cache map[string]interface{}, node *yaml.Node) (err error) {
 		if err := node.Decode(&sliceEnv); err != nil {
 			return fmt.Errorf("unable to decode node kind %s to dotenv format: %w", kindStr[node.Kind], err)
 		}
+
+		// ensure multi-line vars are quoted
+		for x, line := range sliceEnv {
+			if strings.Contains(line, "\n") {
+				sliceEnv[x] = regexp.MustCompile(`(?s)=([^"'].+)`).ReplaceAllString(line, `='$1'`)
+			}
+		}
+
 		strEnv = strings.Join(sliceEnv, "\n")
 	}
 
@@ -328,6 +337,7 @@ func visitDotenv(cache map[string]interface{}, node *yaml.Node) (err error) {
 	for k, v := range dotenvMap {
 		cache[k] = v
 	}
+
 	return err
 }
 
