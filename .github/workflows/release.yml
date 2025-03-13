@@ -15,7 +15,7 @@ jobs:
       - run: go mod tidy
       - uses: goreleaser/goreleaser-action@v5
         with:
-          version: v1.18.3
+          version: v1.18.2
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
