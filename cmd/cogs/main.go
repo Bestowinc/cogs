@@ -15,7 +15,7 @@ import (
 	"github.com/Bestowinc/cogs"
 )
 
-const cogsVersion = "0.10.0"
+const cogsVersion = "0.10.1"
 const usage string = `
 COGS COnfiguration manaGement S
 
