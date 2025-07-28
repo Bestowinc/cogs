@@ -314,6 +314,9 @@ func (vi *visitor) get(subPath string) (*yaml.Node, error) {
 func visitDotenv(cache map[string]interface{}, node *yaml.Node) (err error) {
 	var strEnv string
 
+	// Handle dashes in variable names by creating a mapping
+	keyMapping := make(map[string]string)
+
 	if err = node.Decode(&strEnv); err != nil {
 		var sliceEnv []string
 		if err := node.Decode(&sliceEnv); err != nil {
@@ -325,6 +328,28 @@ func visitDotenv(cache map[string]interface{}, node *yaml.Node) (err error) {
 			if strings.Contains(line, "\n") {
 				sliceEnv[x] = regexp.MustCompile(`(?s)=([^"'].+)`).ReplaceAllString(line, `='$1'`)
 			}
+
+			// Find and replace keys with dashes
+			if strings.Contains(line, "=") {
+				parts := strings.SplitN(line, "=", 2)
+				if len(parts) == 2 {
+					originalKey := parts[0]
+					if strings.Contains(originalKey, "-") {
+						sanitizedKey := strings.ReplaceAll(originalKey, "-", "_")
+						uniqueKey := sanitizedKey
+						counter := 1
+						for {
+							if _, exists := keyMapping[uniqueKey]; !exists {
+								break
+							}
+							uniqueKey = fmt.Sprintf("%s_%d", sanitizedKey, counter)
+							counter++
+						}
+						keyMapping[uniqueKey] = originalKey
+						sliceEnv[x] = uniqueKey + "=" + parts[1]
+					}
+				}
+			}
 		}
 
 		strEnv = strings.Join(sliceEnv, "\n")
@@ -334,8 +359,14 @@ func visitDotenv(cache map[string]interface{}, node *yaml.Node) (err error) {
 	if err != nil {
 		return err
 	}
+
+	// Restore original keys with dashes
 	for k, v := range dotenvMap {
-		cache[k] = v
+		if originalKey, exists := keyMapping[k]; exists {
+			cache[originalKey] = v
+		} else {
+			cache[k] = v
+		}
 	}
 
 	return err

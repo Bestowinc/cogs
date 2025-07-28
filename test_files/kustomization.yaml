@@ -7,6 +7,8 @@ configMapGenerator:
         SOME_MULTILINE_JSON={
          "some_key": "some_value",
         }
+      - VAL_WITH_DASH=some-val
+      - KEY-WITH_DASH=some_val
 jsonMap: { "var3": "var3_value" }
 complexJsonMap: |
   {
