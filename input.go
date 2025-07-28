@@ -336,8 +336,17 @@ func visitDotenv(cache map[string]interface{}, node *yaml.Node) (err error) {
 					originalKey := parts[0]
 					if strings.Contains(originalKey, "-") {
 						sanitizedKey := strings.ReplaceAll(originalKey, "-", "_")
-						keyMapping[sanitizedKey] = originalKey
-						sliceEnv[x] = sanitizedKey + "=" + parts[1]
+						uniqueKey := sanitizedKey
+						counter := 1
+						for {
+							if _, exists := keyMapping[uniqueKey]; !exists {
+								break
+							}
+							uniqueKey = fmt.Sprintf("%s_%d", sanitizedKey, counter)
+							counter++
+						}
+						keyMapping[uniqueKey] = originalKey
+						sliceEnv[x] = uniqueKey + "=" + parts[1]
 					}
 				}
 			}
