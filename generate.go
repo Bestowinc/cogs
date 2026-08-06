@@ -42,11 +42,15 @@ type Link struct {
 	SubPath    string      // object traversal string used to resolve Link if not at top level of document (yq syntax)
 	encrypted  bool        // indicates if decryption is needed to resolve Link.Value
 	remote     bool        // indicates if an HTTP request is needed to return the given document
-	header     http.Header // HTTP request headers
-	method     string      // HTTP request method
-	body       string      // HTTP request body
-	keys       []string    // key filter for Gear read types
-	readType   ReadType
+	// secretManager indicates Link.Value is fetched from Google Secret Manager rather than a
+	// document. Checked independently of encrypted: a GSM link resolves the same in or out of .enc
+	secretManager bool
+	smProject     string      // GCP project holding the secret, parsed from a gcpsm:// path
+	header        http.Header // HTTP request headers
+	method        string      // HTTP request method
+	body          string      // HTTP request body
+	keys          []string    // key filter for Gear read types
+	readType      ReadType
 }
 
 // distinctPath returns the Link properties needed to differentiate Links with identical paths
@@ -142,9 +146,25 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 
 	pathGroups := make(map[distinctPath]*PathGroup)
 
+	var errs error
+
+	// 0. Secret Manager links resolve in their own pass: each one is a separate fetch keyed by
+	// its full coordinate, whereas distinctPath would collapse them into a single document read
+	var smLinks []*Link
+	for _, link := range g.linkMap {
+		if link.secretManager {
+			smLinks = append(smLinks, link)
+		}
+	}
+	if len(smLinks) > 0 {
+		if err := resolveSecretManager(smLinks); err != nil {
+			errs = multierr.Append(errs, err)
+		}
+	}
+
 	// 1. sort Links by Path
 	for _, link := range g.linkMap {
-		if link.Path == "" {
+		if link.Path == "" || link.secretManager {
 			continue
 		}
 
@@ -176,7 +196,6 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 		pathGroups[link.distinctPath()].links = append(pathGroups[link.distinctPath()].links, link)
 	}
 
-	var errs error
 	for p, pGroup := range pathGroups {
 		var fileBuf []byte
 		// 2. for each distinct Path: generate a Reader object
@@ -533,6 +552,19 @@ func parseLinkMap(varName string, baseLink *Link, cfgMap CfgMap) (*Link, error) 
 		if baseLink.SearchName != "" {
 			link.SearchName = baseLink.SearchName
 		}
+	}
+
+	// a gcpsm:// path parses as a valid URL, so it must be claimed before the remote check
+	if isSecretManagerPath(link.Path) {
+		link.secretManager = true
+		if link.smProject, err = parseSecretManagerPath(link.Path); err != nil {
+			return nil, fmt.Errorf("%s.path: %w", varName, err)
+		}
+		// a GSM payload is assigned verbatim, so a read type would silently do nothing
+		if _, ok := cfgMap["type"]; ok {
+			return nil, fmt.Errorf("%s.type: type is not supported for %s links", varName, SecretManagerScheme)
+		}
+		return &link, nil
 	}
 
 	link.remote = isValidURL(link.Path)
