@@ -134,14 +134,18 @@ crs = {path = [], name = "ryerson-tools-CRS_RO_DB__PASSWORD-qa"}
 # a one-off var gives all three fields inline
 [other.enc.vars]
 db_password = {path = ["gcpsm://my-proj", "latest"], name = "db-password"}
+# a secret whose payload is a JSON object
+creds = {path = ["gcpsm://my-proj", "latest"], name = "db-creds", type = "json"}
 ```
 
 Authentication uses [Application Default Credentials][adc] — the same credential path KMS-backed SOPS decryption already uses, so `gcloud auth application-default login` is the only setup. The `gcloud` binary is not invoked.
 
 Behavior worth knowing:
 
-* **Payloads are assigned verbatim.** A GSM value never passes through a document visitor, so `p@ss: word` stays a string rather than becoming a map, and `*abc` does not resolve as a YAML anchor. Because of this, `type` is rejected on a GSM link.
+* **Payloads are assigned verbatim.** A secret is never handed to a YAML parser, so `p@ss: word` stays a string rather than becoming a map, `123` stays `"123"`, and `*abc` does not resolve as an anchor.
+* **`type` parses the payload itself.** A project + version alias is one document and each secret id is a key in it, so a var with no `type` gets its payload as a string. Declaring `type = "json"` (or `yaml`, `toml`, `dotenv`, `json{}`, …) parses that one secret's payload, which is how a secret holding `{"user":"u","pass":"p"}` becomes a map. `type = "whole"` is the same as declaring nothing: the whole of a secret is its payload.
 * **A trailing newline is trimmed**, so a secret stored with one does not corrupt values such as `PGPASSWORD`.
+* **A secret that does not exist is a missing key.** A `NotFound` is reported the same way a key absent from a YAML file is, alongside every other missing key in that project + version.
 * **Fetches are concurrent and deduplicated.** Distinct secrets are fetched in parallel over one shared client, bounded by `SecretManagerConcurrency` (default 8) and by a whole-batch `SecretManagerTimeout` (default 30s). Vars pointing at the same project/secret/version cost one fetch.
 * **Failures are reported together.** A batch with several bad secret ids names every one of them, in a stable order, rather than dying on the first.
 * **`.enc` placement is advisory.** A GSM link resolves identically inside or outside an `.enc` block; putting it under `.enc` only signals that the value is sensitive.

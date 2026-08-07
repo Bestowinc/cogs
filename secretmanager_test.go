@@ -12,27 +12,37 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// stubFetcher records every coordinate requested and serves payloads from a fixed map
+// stubFetcher records every resource name requested and serves payloads from a fixed map
 type stubFetcher struct {
 	payloads map[string]string // secret id -> payload
 	failures map[string]error  // secret id -> error
 
 	mu     sync.Mutex
-	calls  []smCoord
+	calls  []string
 	closed bool
 }
 
-func (s *stubFetcher) fetch(_ gocontext.Context, c smCoord) ([]byte, error) {
+// secretID pulls the secret id out of a projects/../secrets/../versions/.. resource name
+func secretID(resource string) string {
+	parts := strings.Split(resource, "/")
+	if len(parts) != 6 {
+		return ""
+	}
+	return parts[3]
+}
+
+func (s *stubFetcher) fetch(_ gocontext.Context, resource string) ([]byte, error) {
 	s.mu.Lock()
-	s.calls = append(s.calls, c)
+	s.calls = append(s.calls, resource)
 	s.mu.Unlock()
 
-	if err, ok := s.failures[c.secret]; ok {
-		return nil, secretManagerError(c, err)
+	id := secretID(resource)
+	if err, ok := s.failures[id]; ok {
+		return nil, err
 	}
-	payload, ok := s.payloads[c.secret]
+	payload, ok := s.payloads[id]
 	if !ok {
-		return nil, secretManagerError(c, fmt.Errorf("stub has no payload"))
+		return nil, fmt.Errorf("stub has no payload for %s", resource)
 	}
 	return []byte(payload), nil
 }
@@ -84,9 +94,8 @@ crs = {path = [], name = "ryerson-tools-CRS_RO_DB__PASSWORD-qa"}
 dcs = {path = [], name = "ryerson-tools-DCS_RO_DB__PASSWORD-qa"}
 `
 
-// Vars sharing a ctx-level path differ only by name, which distinctPath does not
-// account for: a document-oriented resolver collapses them into one fetch and hands
-// back the same value three times.
+// Vars sharing a ctx-level path differ only by name: the project+version is one
+// document and each secret id is a key within it
 func TestSecretManagerSharedCtxResolvesDistinctSecrets(t *testing.T) {
 	stub := &stubFetcher{payloads: map[string]string{
 		"ryerson-tools-PAS_RO_DB__PASSWORD-qa": "pas-pw",
@@ -114,17 +123,14 @@ func TestSecretManagerSharedCtxResolvesDistinctSecrets(t *testing.T) {
 	}
 
 	for key, link := range gear.linkMap {
-		if !link.secretManager {
-			t.Errorf("%s: secretManager = false, want true", key)
+		if link.Path != "gcpsm://bestow-secrets-nonprod/current" {
+			t.Errorf("%s: Path = %q, want the version folded in", key, link.Path)
+		}
+		if link.SubPath != "" {
+			t.Errorf("%s: SubPath = %q, want it consumed by Path", key, link.SubPath)
 		}
 		if link.remote {
 			t.Errorf("%s: remote = true, a gcpsm:// link must not be fetched over HTTP", key)
-		}
-		if link.smProject != "bestow-secrets-nonprod" {
-			t.Errorf("%s: smProject = %q", key, link.smProject)
-		}
-		if got := link.smCoord().version; got != "current" {
-			t.Errorf("%s: version = %q, want current", key, got)
 		}
 	}
 }
@@ -166,7 +172,7 @@ pw = {path = ["gcpsm://proj", "latest"], name = "secret"}
 	}
 }
 
-func TestSecretManagerDedupsSharedCoordinate(t *testing.T) {
+func TestSecretManagerDedupsSharedSecretID(t *testing.T) {
 	stub := &stubFetcher{payloads: map[string]string{"shared": "shared-pw"}}
 	stub.install(t)
 
@@ -185,7 +191,111 @@ ns_owner  = {path = [], name = "shared"}
 		t.Errorf("got %v", cfg)
 	}
 	if got := stub.callCount(); got != 1 {
-		t.Errorf("fetch calls = %d, want 1 (coordinates must dedup)", got)
+		t.Errorf("fetch calls = %d, want 1 (secret ids must dedup)", got)
+	}
+}
+
+// A var with no `name` looks the secret up by its key name, like any other link
+func TestSecretManagerDefaultsSecretIDToKeyName(t *testing.T) {
+	stub := &stubFetcher{payloads: map[string]string{"db_password": "pw"}}
+	stub.install(t)
+
+	_, cfg, err := genGear(t, "qa", `
+name = "sm"
+[qa.enc.vars]
+db_password = {path = ["gcpsm://proj", "current"]}
+`)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if cfg["db_password"] != "pw" {
+		t.Errorf("db_password = %q", cfg["db_password"])
+	}
+}
+
+// Two versions of one project are two documents, each loaded in the same run
+func TestSecretManagerSeparatesVersions(t *testing.T) {
+	stub := &stubFetcher{payloads: map[string]string{"secret": "pw"}}
+	stub.install(t)
+
+	_, cfg, err := genGear(t, "qa", `
+name = "sm"
+[qa.enc.vars]
+now  = {path = ["gcpsm://proj", "current"], name = "secret"}
+next = {path = ["gcpsm://proj", "latest"], name = "secret"}
+`)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if cfg["now"] != "pw" || cfg["next"] != "pw" {
+		t.Errorf("got %v", cfg)
+	}
+	if got := stub.callCount(); got != 2 {
+		t.Errorf("fetch calls = %d, want 2 (versions are distinct documents)", got)
+	}
+	wantResources := []string{
+		"projects/proj/secrets/secret/versions/current",
+		"projects/proj/secrets/secret/versions/latest",
+	}
+	for _, want := range wantResources {
+		if !InList(want, stub.calls) {
+			t.Errorf("missing fetch of %s, got %v", want, stub.calls)
+		}
+	}
+}
+
+// An omitted version alias defaults to "latest"
+func TestSecretManagerDefaultsVersion(t *testing.T) {
+	stub := &stubFetcher{payloads: map[string]string{"secret": "pw"}}
+	stub.install(t)
+
+	gear, cfg, err := genGear(t, "qa", `
+name = "sm"
+[qa.enc.vars]
+pw = {path = "gcpsm://proj", name = "secret"}
+`)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if cfg["pw"] != "pw" {
+		t.Errorf("pw = %q", cfg["pw"])
+	}
+	if got := gear.linkMap["pw"].Path; got != "gcpsm://proj/latest" {
+		t.Errorf("Path = %q, want gcpsm://proj/latest", got)
+	}
+}
+
+// `type` applies to the payload itself: a secret holding JSON resolves to a map
+func TestSecretManagerReadTypeParsesPayload(t *testing.T) {
+	stub := &stubFetcher{payloads: map[string]string{
+		"creds": `{"user":"u","pass":"p"}`,
+		"raw":   `{"user":"u","pass":"p"}`,
+	}}
+	stub.install(t)
+
+	gear, cfg, err := genGear(t, "qa", `
+name = "sm"
+[qa.enc]
+path = ["gcpsm://proj", "current"]
+[qa.enc.vars]
+creds = {path = [], name = "creds", type = "json"}
+raw   = {path = [], name = "raw"}
+`)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+
+	value := gear.linkMap["creds"].Value
+	parsed, ok := value.(map[string]interface{})
+	if !ok {
+		t.Fatalf("creds = %#v, want a map", value)
+	}
+	if parsed["user"] != "u" || parsed["pass"] != "p" {
+		t.Errorf("creds = %v", parsed)
+	}
+	// a deferred link over the same document still gets its payload verbatim
+	if cfg["raw"] != `{"user":"u","pass":"p"}` {
+		t.Errorf("raw = %q, want the verbatim payload", cfg["raw"])
 	}
 }
 
@@ -217,27 +327,35 @@ two = {path = [], name = "bad-b"}
 			t.Errorf("error missing %q: %v", want, err)
 		}
 	}
-	// sorted coordinate order keeps the message identical run to run
+	// sorted secret id order keeps the message identical run to run
 	if strings.Index(err.Error(), "boom a") > strings.Index(err.Error(), "boom b") {
-		t.Errorf("errors are not in sorted coordinate order: %v", err)
+		t.Errorf("errors are not in sorted secret id order: %v", err)
 	}
 }
 
-func TestSecretManagerNotFoundNamesSecretAndProject(t *testing.T) {
-	stub := &stubFetcher{failures: map[string]error{
-		"missing": status.Error(codes.NotFound, "not found"),
-	}}
+// A secret that does not exist is reported as a missing key, like a key absent
+// from a YAML file, rather than aborting the whole document
+func TestSecretManagerNotFoundIsAMissingKey(t *testing.T) {
+	stub := &stubFetcher{
+		payloads: map[string]string{"present": "pw"},
+		failures: map[string]error{
+			"missing": status.Error(codes.NotFound, "not found"),
+		},
+	}
 	stub.install(t)
 
 	_, _, err := genGear(t, "qa", `
 name = "sm"
+[qa.enc]
+path = ["gcpsm://proj", "current"]
 [qa.enc.vars]
-pw = {path = ["gcpsm://proj", "current"], name = "missing"}
+here = {path = [], name = "present"}
+gone = {path = [], name = "missing"}
 `)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	for _, want := range []string{"missing", "proj", "not found"} {
+	for _, want := range []string{"unable to find key", "missing", "gcpsm://proj/current"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error missing %q: %v", want, err)
 		}
@@ -250,15 +368,6 @@ func TestSecretManagerManifestErrors(t *testing.T) {
 		cogToml string
 		wantErr string
 	}{
-		{
-			name: "ExplicitType",
-			cogToml: `
-name = "sm"
-[qa.enc.vars]
-pw = {path = ["gcpsm://proj", "current"], name = "secret", type = "whole"}
-`,
-			wantErr: "type is not supported",
-		},
 		{
 			name: "SecretInPath",
 			cogToml: `
@@ -276,6 +385,15 @@ name = "sm"
 pw = {path = ["gcpsm://", "current"]}
 `,
 			wantErr: "must be followed by a GCP project id",
+		},
+		{
+			name: "BadReadType",
+			cogToml: `
+name = "sm"
+[qa.enc.vars]
+pw = {path = ["gcpsm://proj", "current"], name = "secret", type = "nonsense"}
+`,
+			wantErr: "invalid linkType",
 		},
 	}
 

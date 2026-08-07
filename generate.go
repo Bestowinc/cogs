@@ -42,15 +42,11 @@ type Link struct {
 	SubPath    string      // object traversal string used to resolve Link if not at top level of document (yq syntax)
 	encrypted  bool        // indicates if decryption is needed to resolve Link.Value
 	remote     bool        // indicates if an HTTP request is needed to return the given document
-	// secretManager indicates Link.Value is fetched from Google Secret Manager rather than a
-	// document. Checked independently of encrypted: a GSM link resolves the same in or out of .enc
-	secretManager bool
-	smProject     string      // GCP project holding the secret, parsed from a gcpsm:// path
-	header        http.Header // HTTP request headers
-	method        string      // HTTP request method
-	body          string      // HTTP request body
-	keys          []string    // key filter for Gear read types
-	readType      ReadType
+	header     http.Header // HTTP request headers
+	method     string      // HTTP request method
+	body       string      // HTTP request body
+	keys       []string    // key filter for Gear read types
+	readType   ReadType
 }
 
 // distinctPath returns the Link properties needed to differentiate Links with identical paths
@@ -148,30 +144,22 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 
 	var errs error
 
-	// 0. Secret Manager links resolve in their own pass: each one is a separate fetch keyed by
-	// its full coordinate, whereas distinctPath would collapse them into a single document read
-	var smLinks []*Link
-	for _, link := range g.linkMap {
-		if link.secretManager {
-			smLinks = append(smLinks, link)
-		}
-	}
-	if len(smLinks) > 0 {
-		if err := resolveSecretManager(smLinks); err != nil {
-			errs = multierr.Append(errs, err)
-		}
-	}
-
 	// 1. sort Links by Path
 	for _, link := range g.linkMap {
-		if link.Path == "" || link.secretManager {
+		if link.Path == "" {
 			continue
 		}
 
 		if _, ok := pathGroups[link.distinctPath()]; !ok {
 			// read plaintext file into bytes
 			loadFile := readFile
+			pg := &PathGroup{links: []*Link{}}
 			switch {
+			case isSecretManagerPath(link.Path):
+				// pg.links is read at call time, once step 1 has appended every link
+				loadFile = func(path string) ([]byte, error) {
+					return getSecretManagerFile(path, pg.links)
+				}
 			case link.remote:
 				// must explicitly define variables
 				// or previous link values will bleed into loadFile func
@@ -191,7 +179,8 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 			case link.encrypted:
 				loadFile = decryptFile
 			}
-			pathGroups[link.distinctPath()] = &PathGroup{loadFile: loadFile, links: []*Link{}}
+			pg.loadFile = loadFile
+			pathGroups[link.distinctPath()] = pg
 		}
 		pathGroups[link.distinctPath()].links = append(pathGroups[link.distinctPath()].links, link)
 	}
@@ -204,7 +193,9 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 		if p.path == selfPath {
 			fileBuf = g.fileValue
 		} else if fileBuf, err = pGroup.loadFile(linkFilePath); err != nil {
-			if os.IsNotExist(err) {
+			// a missing file and a failed secret fetch both describe one source, so
+			// every other source still gets to report its own problems
+			if os.IsNotExist(err) || isSecretManagerPath(p.path) {
 				errs = multierr.Append(errs, err)
 				continue
 			}
@@ -214,15 +205,20 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 		newVisitor := NewYAMLVisitor
 		// 3. create visitor to handle SubPath strings
 		// all read files should resolve to a yaml.Node, this includes JSON, TOML, and dotenv
-		switch FormatForPath(linkFilePath) {
-		case JSON:
-			newVisitor = NewJSONVisitor
-		case YAML:
-			newVisitor = NewYAMLVisitor
-		case TOML:
-			newVisitor = NewTOMLVisitor
-		case Dotenv:
-			newVisitor = NewDotenvVisitor
+		switch {
+		case isSecretManagerPath(linkFilePath):
+			newVisitor = newSecretManagerVisitor
+		default:
+			switch FormatForPath(linkFilePath) {
+			case JSON:
+				newVisitor = NewJSONVisitor
+			case YAML:
+				newVisitor = NewYAMLVisitor
+			case TOML:
+				newVisitor = NewTOMLVisitor
+			case Dotenv:
+				newVisitor = NewDotenvVisitor
+			}
 		}
 		visitor, err := newVisitor(fileBuf)
 		if err != nil {
@@ -554,16 +550,13 @@ func parseLinkMap(varName string, baseLink *Link, cfgMap CfgMap) (*Link, error) 
 		}
 	}
 
-	// a gcpsm:// path parses as a valid URL, so it must be claimed before the remote check
+	// a gcpsm:// path parses as a valid URL, so claim it before the remote check.
+	// normalizing here rather than on baseLink keeps ctx level path inheritance working
 	if isSecretManagerPath(link.Path) {
-		link.secretManager = true
-		if link.smProject, err = parseSecretManagerPath(link.Path); err != nil {
+		if link.Path, err = normalizeSecretManagerPath(link.Path, link.SubPath); err != nil {
 			return nil, fmt.Errorf("%s.path: %w", varName, err)
 		}
-		// a GSM payload is assigned verbatim, so a read type would silently do nothing
-		if _, ok := cfgMap["type"]; ok {
-			return nil, fmt.Errorf("%s.type: type is not supported for %s links", varName, SecretManagerScheme)
-		}
+		link.SubPath = ""
 		return &link, nil
 	}
 

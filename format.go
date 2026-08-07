@@ -136,6 +136,10 @@ func FormatLinkInput(link *Link) (format Format) {
 	switch link.readType {
 	case rJSON, rJSONComplex:
 		format = JSON
+	case rYAML, rYAMLComplex:
+		format = YAML
+	case rTOML, rTOMLComplex:
+		format = TOML
 	case rDotenv:
 		format = Dotenv
 	// grab Format from filepath suffix if there are no explicit type overrides

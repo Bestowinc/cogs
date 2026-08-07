@@ -3,6 +3,7 @@ package cogs
 import (
 	"bytes"
 	gocontext "context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
+	"github.com/joho/godotenv"
 	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
@@ -33,59 +35,40 @@ func isSecretManagerPath(path string) bool {
 	return strings.HasPrefix(path, SecretManagerScheme)
 }
 
-// parseSecretManagerPath returns the GCP project held by a gcpsm:// path
-func parseSecretManagerPath(path string) (string, error) {
+// normalizeSecretManagerPath folds the version alias held by path[1] into the path:
+// a GSM project+version is one document, so it groups, loads and reports errors
+// like any other source
+func normalizeSecretManagerPath(path, version string) (string, error) {
 	project := strings.TrimPrefix(path, SecretManagerScheme)
 	if before, after, ok := strings.Cut(project, "/"); ok {
 		return "", fmt.Errorf("%s%s must only hold a project id, define the secret id with `name = %q`",
-			SecretManagerScheme, before, strings.TrimPrefix(after, "/"))
+			SecretManagerScheme, before, after)
 	}
 	if project == "" {
 		return "", fmt.Errorf("%s must be followed by a GCP project id", SecretManagerScheme)
 	}
-	return project, nil
-}
-
-// smCoord fully identifies one secret version. It is comparable, so it doubles as a dedup map key
-type smCoord struct {
-	project string
-	secret  string
-	version string
-}
-
-// smCoord returns the Secret Manager coordinate a Link resolves to
-func (c Link) smCoord() smCoord {
-	version := c.SubPath
 	if version == "" {
 		version = defaultSecretVersion
 	}
-	return smCoord{project: c.smProject, secret: c.SearchName, version: version}
+	return SecretManagerScheme + project + "/" + version, nil
 }
 
-// resource returns the Secret Manager resource name of a coordinate
-func (c smCoord) resource() string {
-	return fmt.Sprintf("projects/%s/secrets/%s/versions/%s", c.project, c.secret, c.version)
-}
-
-// String holds the manifest-facing representation of a coordinate, used in error messages
-func (c smCoord) String() string {
-	return fmt.Sprintf("%s%s/%s#%s", SecretManagerScheme, c.project, c.secret, c.version)
-}
-
-// less orders coordinates so that fetch dispatch, value assignment, and error
-// aggregation are all byte-identical run to run
-func (c smCoord) less(o smCoord) bool {
-	if c.project != o.project {
-		return c.project < o.project
+// parseSecretManagerPath splits a path already run through normalizeSecretManagerPath
+func parseSecretManagerPath(path string) (project, version string, err error) {
+	project, version, ok := strings.Cut(strings.TrimPrefix(path, SecretManagerScheme), "/")
+	if !ok || project == "" || version == "" {
+		return "", "", fmt.Errorf("%q is not a %s<project>/<version> path", path, SecretManagerScheme)
 	}
-	if c.secret != o.secret {
-		return c.secret < o.secret
-	}
-	return c.version < o.version
+	return project, version, nil
 }
 
-// secretFetcher resolves a single coordinate to its raw payload
-type secretFetcher func(ctx gocontext.Context, c smCoord) ([]byte, error)
+// secretResource returns the Secret Manager resource name of a single secret version
+func secretResource(project, secret, version string) string {
+	return fmt.Sprintf("projects/%s/secrets/%s/versions/%s", project, secret, version)
+}
+
+// secretFetcher resolves one secret version resource name to its raw payload
+type secretFetcher func(ctx gocontext.Context, resource string) ([]byte, error)
 
 // newSecretFetcher builds a fetcher backed by one shared Secret Manager client.
 // It is a package var so tests can stub Secret Manager without network or ADC.
@@ -95,15 +78,15 @@ var newSecretFetcher = func(ctx gocontext.Context) (secretFetcher, func(), error
 		return nil, nil, fmt.Errorf("secret manager client: %w", err)
 	}
 
-	fetch := func(ctx gocontext.Context, c smCoord) ([]byte, error) {
+	fetch := func(ctx gocontext.Context, resource string) ([]byte, error) {
 		resp, err := client.AccessSecretVersion(ctx, &secretmanagerpb.AccessSecretVersionRequest{
-			Name: c.resource(),
+			Name: resource,
 		})
 		if err != nil {
-			return nil, secretManagerError(c, err)
+			return nil, err
 		}
 		if resp.GetPayload() == nil {
-			return nil, fmt.Errorf("%s: secret version returned an empty payload", c)
+			return nil, fmt.Errorf("secret version returned an empty payload")
 		}
 		return resp.GetPayload().GetData(), nil
 	}
@@ -113,59 +96,60 @@ var newSecretFetcher = func(ctx gocontext.Context) (secretFetcher, func(), error
 
 // secretManagerError annotates a fetch failure with its coordinate.
 // Payload bytes are never included in an error.
-func secretManagerError(c smCoord, err error) error {
+func secretManagerError(project, secret, version string, err error) error {
+	coord := fmt.Sprintf("%s%s/%s#%s", SecretManagerScheme, project, secret, version)
 	switch status.Code(err) {
-	case codes.NotFound:
-		return fmt.Errorf("%s: secret %q version %q not found in project %q",
-			c, c.secret, c.version, c.project)
 	case codes.PermissionDenied:
 		return fmt.Errorf("%s: permission denied reading secret %q in project %q "+
-			"(try `gcloud auth application-default login`)", c, c.secret, c.project)
+			"(try `gcloud auth application-default login`)", coord, secret, project)
 	case codes.Unauthenticated:
 		// expired or re-auth-required ADC surfaces here, not as PermissionDenied
 		return fmt.Errorf("%s: could not authenticate to Secret Manager, "+
-			"run `gcloud auth application-default login`: %w", c, err)
+			"run `gcloud auth application-default login`: %w", coord, err)
 	}
-	return fmt.Errorf("%s: %w", c, err)
+	return fmt.Errorf("%s: %w", coord, err)
 }
 
-// resolveSecretManager fetches every GSM link concurrently and assigns each payload
-// verbatim to Link.Value, bypassing the document visitor entirely
-func resolveSecretManager(links []*Link) error {
-	// many links can share one coordinate: fetch each distinct secret once
-	byCoord := make(map[smCoord][]*Link)
-	for _, link := range links {
-		if link.SearchName == "" {
-			return fmt.Errorf("%s: secret id must be defined with the `name` key", link.KeyName)
-		}
-		coord := link.smCoord()
-		byCoord[coord] = append(byCoord[coord], link)
+// getSecretManagerFile is the loadFile func of a gcpsm:// path group. It returns the
+// project+version document: a JSON object of secret id to payload. Marshaling each
+// payload as a JSON string is what keeps it verbatim - no value ever reaches a YAML
+// parser, so "p@ss: word" stays a string and "*abc" is never an alias
+func getSecretManagerFile(path string, links []*Link) ([]byte, error) {
+	project, version, err := parseSecretManagerPath(path)
+	if err != nil {
+		return nil, err
 	}
 
-	coords := make([]smCoord, 0, len(byCoord))
-	for coord := range byCoord {
-		coords = append(coords, coord)
+	// many links can share one secret id: the set collapses them into a single fetch
+	idSet := make(map[string]struct{}, len(links))
+	for _, link := range links {
+		idSet[link.SearchName] = struct{}{}
 	}
-	sort.Slice(coords, func(i, j int) bool { return coords[i].less(coords[j]) })
+	ids := make([]string, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	// sorted ids keep fetch dispatch and error output identical run to run
+	sort.Strings(ids)
 
 	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), SecretManagerTimeout)
 	defer cancel()
 
 	fetch, closeFetcher, err := newSecretFetcher(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer closeFetcher()
 
 	// index-addressed results: no shared map writes, nothing to guard with a mutex
-	payloads := make([][]byte, len(coords))
-	errs := make([]error, len(coords))
+	payloads := make([][]byte, len(ids))
+	errs := make([]error, len(ids))
 
 	eg, egCtx := errgroup.WithContext(ctx)
 	eg.SetLimit(SecretManagerConcurrency)
-	for i, coord := range coords {
+	for i, id := range ids {
 		eg.Go(func() error {
-			payloads[i], errs[i] = fetch(egCtx, coord)
+			payloads[i], errs[i] = fetch(egCtx, secretResource(project, id, version))
 			// collect failures rather than cancelling siblings: a batch with several
 			// bad secret ids should report all of them
 			return nil
@@ -173,18 +157,92 @@ func resolveSecretManager(links []*Link) error {
 	}
 	_ = eg.Wait()
 
+	doc := make(map[string]string, len(ids))
 	var fetchErrs error
-	for i, coord := range coords {
-		if errs[i] != nil {
-			fetchErrs = multierr.Append(fetchErrs, errs[i])
+	for i, id := range ids {
+		if err := errs[i]; err != nil {
+			// a secret that does not exist is left out of the document so the visitor
+			// reports it as a missing key, like a key absent from a YAML file
+			if status.Code(err) == codes.NotFound {
+				continue
+			}
+			fetchErrs = multierr.Append(fetchErrs, secretManagerError(project, id, version, err))
 			continue
 		}
 		// a trailing newline must never leak into a value such as PGPASSWORD
-		value := string(bytes.TrimRight(payloads[i], "\n"))
-		for _, link := range byCoord[coord] {
-			link.Value = value
-		}
+		doc[id] = string(bytes.TrimRight(payloads[i], "\n"))
+	}
+	if fetchErrs != nil {
+		return nil, fetchErrs
 	}
 
-	return fetchErrs
+	return json.Marshal(doc)
+}
+
+// secretVisitor resolves Links against the payloads fetched for one project+version.
+// A payload is handed back verbatim unless the Link declares a read type, in which
+// case the payload itself is parsed: a secret holding JSON becomes a map
+type secretVisitor struct {
+	payloads map[string]string
+	missing  map[string][]string
+}
+
+// newSecretManagerVisitor returns a Visitor over a getSecretManagerFile document
+func newSecretManagerVisitor(buf []byte) (Visitor, error) {
+	payloads := make(map[string]string)
+	if err := json.Unmarshal(buf, &payloads); err != nil {
+		return nil, fmt.Errorf("newSecretManagerVisitor: %w", err)
+	}
+	return &secretVisitor{payloads: payloads, missing: make(map[string][]string)}, nil
+}
+
+func (vi *secretVisitor) Errors() []error {
+	return missingErrors(vi.missing)
+}
+
+// SetValue assigns the payload of the secret named by link.SearchName
+func (vi *secretVisitor) SetValue(link *Link) error {
+	payload, ok := vi.payloads[link.SearchName]
+	if !ok {
+		noteMissing(vi.missing, link)
+		return nil
+	}
+
+	// the entirety of a secret is its payload, so neither type touches it
+	if link.readType == deferred || link.readType == rWhole {
+		link.Value = payload
+		return nil
+	}
+
+	value := make(map[string]interface{})
+	if link.readType == rDotenv {
+		flat, err := godotenv.Unmarshal(payload)
+		if err != nil {
+			return fmt.Errorf("%s: %w", link.SearchName, err)
+		}
+		for k, v := range flat {
+			value[k] = v
+		}
+		link.Value = value
+		return nil
+	}
+
+	unmarshal, err := link.readType.getUnmarshal()
+	if err != nil {
+		return fmt.Errorf("%s: %w", link.SearchName, err)
+	}
+	if err := unmarshal([]byte(payload), &value); err != nil {
+		return fmt.Errorf("%s: %w", link.SearchName, err)
+	}
+	// a flat read type must not smuggle a nested object through
+	if !link.readType.isComplex() {
+		for k, v := range value {
+			if !IsSimpleValue(v) {
+				return fmt.Errorf("%s.%s of type %T is not a simple value", link.SearchName, k, v)
+			}
+		}
+	}
+	link.Value = value
+
+	return nil
 }
