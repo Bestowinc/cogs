@@ -145,8 +145,27 @@ type visitor struct {
 }
 
 func (vi *visitor) Errors() []error {
+	return missingErrors(vi.missing)
+}
+
+// noteMissing records a Link whose SearchName was absent from its document
+func noteMissing(missing map[string][]string, link *Link) {
+	subPath := "."
+	if link.SubPath != "" {
+		subPath = link.SubPath
+	}
+
+	errKey := fmt.Sprintf("[%q, %q]", link.Path, subPath)
+	errVal := fmt.Sprintf("unable to find key %q", link.SearchName)
+	if !InList(errVal, missing[errKey]) {
+		missing[errKey] = append(missing[errKey], errVal)
+	}
+}
+
+// missingErrors formats aggregated missing keys into one error per document
+func missingErrors(missing map[string][]string) []error {
 	var errs []error
-	for k, v := range vi.missing {
+	for k, v := range missing {
 		errMsg := k + ":"
 		sort.Strings(v)
 		errMsg = errMsg + "\n      " + strings.Join(v, "\n      ")
@@ -166,16 +185,7 @@ func (vi *visitor) getLink(link *Link, searchMap map[string]interface{}) (interf
 		return value, ok
 	}
 	// link is unable to be found in the searchMap at this point
-	subPath := "."
-	if link.SubPath != "" {
-		subPath = link.SubPath
-	}
-
-	errKey := fmt.Sprintf("[%q, %q]", link.Path, subPath)
-	errVal := fmt.Sprintf("unable to find key %q", link.SearchName)
-	if !InList(errVal, vi.missing[errKey]) {
-		vi.missing[errKey] = append(vi.missing[errKey], errVal)
-	}
+	noteMissing(vi.missing, link)
 
 	return nil, false
 }

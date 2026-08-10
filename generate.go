@@ -142,6 +142,8 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 
 	pathGroups := make(map[distinctPath]*PathGroup)
 
+	var errs error
+
 	// 1. sort Links by Path
 	for _, link := range g.linkMap {
 		if link.Path == "" {
@@ -151,7 +153,13 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 		if _, ok := pathGroups[link.distinctPath()]; !ok {
 			// read plaintext file into bytes
 			loadFile := readFile
+			pg := &PathGroup{links: []*Link{}}
 			switch {
+			case isSecretManagerPath(link.Path):
+				// pg.links is read at call time, once step 1 has appended every link
+				loadFile = func(path string) ([]byte, error) {
+					return getSecretManagerFile(path, pg.links)
+				}
 			case link.remote:
 				// must explicitly define variables
 				// or previous link values will bleed into loadFile func
@@ -171,12 +179,12 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 			case link.encrypted:
 				loadFile = decryptFile
 			}
-			pathGroups[link.distinctPath()] = &PathGroup{loadFile: loadFile, links: []*Link{}}
+			pg.loadFile = loadFile
+			pathGroups[link.distinctPath()] = pg
 		}
 		pathGroups[link.distinctPath()].links = append(pathGroups[link.distinctPath()].links, link)
 	}
 
-	var errs error
 	for p, pGroup := range pathGroups {
 		var fileBuf []byte
 		// 2. for each distinct Path: generate a Reader object
@@ -185,7 +193,9 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 		if p.path == selfPath {
 			fileBuf = g.fileValue
 		} else if fileBuf, err = pGroup.loadFile(linkFilePath); err != nil {
-			if os.IsNotExist(err) {
+			// a missing file and a failed secret fetch both describe one source, so
+			// every other source still gets to report its own problems
+			if os.IsNotExist(err) || isSecretManagerPath(p.path) {
 				errs = multierr.Append(errs, err)
 				continue
 			}
@@ -195,15 +205,20 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 		newVisitor := NewYAMLVisitor
 		// 3. create visitor to handle SubPath strings
 		// all read files should resolve to a yaml.Node, this includes JSON, TOML, and dotenv
-		switch FormatForPath(linkFilePath) {
-		case JSON:
-			newVisitor = NewJSONVisitor
-		case YAML:
-			newVisitor = NewYAMLVisitor
-		case TOML:
-			newVisitor = NewTOMLVisitor
-		case Dotenv:
-			newVisitor = NewDotenvVisitor
+		switch {
+		case isSecretManagerPath(linkFilePath):
+			newVisitor = newSecretManagerVisitor
+		default:
+			switch FormatForPath(linkFilePath) {
+			case JSON:
+				newVisitor = NewJSONVisitor
+			case YAML:
+				newVisitor = NewYAMLVisitor
+			case TOML:
+				newVisitor = NewTOMLVisitor
+			case Dotenv:
+				newVisitor = NewDotenvVisitor
+			}
 		}
 		visitor, err := newVisitor(fileBuf)
 		if err != nil {
@@ -533,6 +548,16 @@ func parseLinkMap(varName string, baseLink *Link, cfgMap CfgMap) (*Link, error) 
 		if baseLink.SearchName != "" {
 			link.SearchName = baseLink.SearchName
 		}
+	}
+
+	// a gcpsm:// path parses as a valid URL, so claim it before the remote check.
+	// normalizing here rather than on baseLink keeps ctx level path inheritance working
+	if isSecretManagerPath(link.Path) {
+		if link.Path, err = normalizeSecretManagerPath(link.Path, link.SubPath); err != nil {
+			return nil, fmt.Errorf("%s.path: %w", varName, err)
+		}
+		link.SubPath = ""
+		return &link, nil
 	}
 
 	link.remote = isValidURL(link.Path)

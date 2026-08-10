@@ -30,8 +30,12 @@ func marshalComplexValue(v interface{}, inputType Format) (output string, err er
 		b, err = yaml.Marshal(v)
 		output = string(b)
 	case TOML:
-		b, err = toml.Marshal(v)
-		output = string(b)
+		// TOML has no top-level array or scalar document, so only a table
+		// can round trip; anything else falls back to raw formatting
+		if b, err := toml.Marshal(v); err == nil {
+			return string(b), nil
+		}
+		output = fmt.Sprintf("%s", v)
 	case Dotenv, Raw:
 		output = fmt.Sprintf("%s", v)
 	}
