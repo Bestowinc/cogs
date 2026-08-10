@@ -3,6 +3,7 @@ package cogs
 import (
 	"bytes"
 	gocontext "context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -111,9 +112,9 @@ func secretManagerError(project, secret, version string, err error) error {
 }
 
 // getSecretManagerFile is the loadFile func of a gcpsm:// path group. It returns the
-// project+version document: a JSON object of secret id to payload. Marshaling each
-// payload as a JSON string is what keeps it verbatim - no value ever reaches a YAML
-// parser, so "p@ss: word" stays a string and "*abc" is never an alias
+// project+version document: a JSON object of secret id to base64 payload. Marshaling
+// each payload as a JSON string is what keeps it verbatim - no value ever reaches a
+// YAML parser, so "p@ss: word" stays a string and "*abc" is never an alias
 func getSecretManagerFile(path string, links []*Link) ([]byte, error) {
 	project, version, err := parseSecretManagerPath(path)
 	if err != nil {
@@ -169,8 +170,10 @@ func getSecretManagerFile(path string, links []*Link) ([]byte, error) {
 			fetchErrs = multierr.Append(fetchErrs, secretManagerError(project, id, version, err))
 			continue
 		}
-		// a trailing newline must never leak into a value such as PGPASSWORD
-		doc[id] = string(bytes.TrimRight(payloads[i], "\n"))
+		// a trailing newline must never leak into a value such as PGPASSWORD.
+		// base64 keeps a non-UTF-8 payload intact: json.Marshal would otherwise
+		// replace invalid bytes with U+FFFD
+		doc[id] = base64.StdEncoding.EncodeToString(bytes.TrimRight(payloads[i], "\n"))
 	}
 	if fetchErrs != nil {
 		return nil, fetchErrs
@@ -189,9 +192,17 @@ type secretVisitor struct {
 
 // newSecretManagerVisitor returns a Visitor over a getSecretManagerFile document
 func newSecretManagerVisitor(buf []byte) (Visitor, error) {
-	payloads := make(map[string]string)
-	if err := json.Unmarshal(buf, &payloads); err != nil {
+	encoded := make(map[string]string)
+	if err := json.Unmarshal(buf, &encoded); err != nil {
 		return nil, fmt.Errorf("newSecretManagerVisitor: %w", err)
+	}
+	payloads := make(map[string]string, len(encoded))
+	for id, enc := range encoded {
+		raw, err := base64.StdEncoding.DecodeString(enc)
+		if err != nil {
+			return nil, fmt.Errorf("newSecretManagerVisitor: %s: %w", id, err)
+		}
+		payloads[id] = string(raw)
 	}
 	return &secretVisitor{payloads: payloads, missing: make(map[string][]string)}, nil
 }
