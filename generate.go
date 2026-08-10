@@ -142,6 +142,11 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 
 	pathGroups := make(map[distinctPath]*PathGroup)
 
+	// every gcpsm:// group of this pass shares one client: a project+version is its
+	// own group, so a manifest spanning versions or projects would otherwise dial once each
+	var smPool secretFetcherPool
+	defer smPool.Close()
+
 	var errs error
 
 	// 1. sort Links by Path
@@ -158,7 +163,7 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 			case isSecretManagerPath(link.Path):
 				// pg.links is read at call time, once step 1 has appended every link
 				loadFile = func(path string) ([]byte, error) {
-					return getSecretManagerFile(path, pg.links)
+					return getSecretManagerFile(path, pg.links, &smPool)
 				}
 			case link.remote:
 				// must explicitly define variables

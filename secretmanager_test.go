@@ -19,6 +19,7 @@ type stubFetcher struct {
 
 	mu     sync.Mutex
 	calls  []string
+	dials  int
 	closed bool
 }
 
@@ -53,11 +54,20 @@ func (s *stubFetcher) callCount() int {
 	return len(s.calls)
 }
 
+func (s *stubFetcher) dialCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.dials
+}
+
 // install replaces newSecretFetcher for the duration of a test
 func (s *stubFetcher) install(t *testing.T) {
 	t.Helper()
 	orig := newSecretFetcher
 	newSecretFetcher = func(gocontext.Context) (secretFetcher, func(), error) {
+		s.mu.Lock()
+		s.dials++
+		s.mu.Unlock()
 		return s.fetch, func() { s.closed = true }, nil
 	}
 	t.Cleanup(func() { newSecretFetcher = orig })
@@ -241,6 +251,52 @@ next = {path = ["gcpsm://proj", "latest"], name = "secret"}
 		if !InList(want, stub.calls) {
 			t.Errorf("missing fetch of %s, got %v", want, stub.calls)
 		}
+	}
+}
+
+// Groups spanning versions and projects still resolve against a single client
+func TestSecretManagerSharesOneClientAcrossGroups(t *testing.T) {
+	stub := &stubFetcher{payloads: map[string]string{"secret": "pw", "other": "pw2"}}
+	stub.install(t)
+
+	_, cfg, err := genGear(t, "qa", `
+name = "sm"
+[qa.enc.vars]
+now   = {path = ["gcpsm://proj", "current"], name = "secret"}
+next  = {path = ["gcpsm://proj", "green"], name = "secret"}
+alien = {path = ["gcpsm://other-proj", "current"], name = "other"}
+`)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if cfg["now"] != "pw" || cfg["next"] != "pw" || cfg["alien"] != "pw2" {
+		t.Errorf("got %v", cfg)
+	}
+	if got := stub.callCount(); got != 3 {
+		t.Errorf("fetch calls = %d, want 3", got)
+	}
+	if got := stub.dialCount(); got != 1 {
+		t.Errorf("clients dialed = %d, want 1 shared across all three groups", got)
+	}
+	if !stub.closed {
+		t.Error("shared client was not closed")
+	}
+}
+
+// A manifest with no gcpsm:// link must never reach for ADC
+func TestSecretManagerNoLinksNeverDials(t *testing.T) {
+	stub := &stubFetcher{}
+	stub.install(t)
+
+	if _, _, err := genGear(t, "qa", `
+name = "sm"
+[qa.vars]
+plain = "value"
+`); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if got := stub.dialCount(); got != 0 {
+		t.Errorf("clients dialed = %d, want 0", got)
 	}
 }
 

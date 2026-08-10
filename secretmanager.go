@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
@@ -95,6 +96,41 @@ var newSecretFetcher = func(ctx gocontext.Context) (secretFetcher, func(), error
 	return fetch, func() { _ = client.Close() }, nil
 }
 
+// secretFetcherPool dials at most one Secret Manager client and hands it to every
+// gcpsm:// group of a resolve pass: one client can serve any project, since the
+// project lives in the resource name. The zero value is ready to use and dials
+// lazily, so a manifest with no gcpsm:// link never reaches for ADC
+type secretFetcherPool struct {
+	mu       sync.Mutex
+	fetch    secretFetcher
+	closeCli func()
+	err      error
+	dialed   bool
+}
+
+// get returns the shared fetcher, dialing it on first call
+func (p *secretFetcherPool) get() (secretFetcher, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.dialed {
+		p.dialed = true
+		// Background, not a batch ctx: the client outlives any single batch and its
+		// credentials refresh against the context it was dialed with
+		p.fetch, p.closeCli, p.err = newSecretFetcher(gocontext.Background())
+	}
+	return p.fetch, p.err
+}
+
+// Close releases the client if one was ever dialed
+func (p *secretFetcherPool) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closeCli != nil {
+		p.closeCli()
+		p.closeCli = nil
+	}
+}
+
 // secretManagerError annotates a fetch failure with its coordinate.
 // Payload bytes are never included in an error.
 func secretManagerError(project, secret, version string, err error) error {
@@ -114,8 +150,9 @@ func secretManagerError(project, secret, version string, err error) error {
 // getSecretManagerFile is the loadFile func of a gcpsm:// path group. It returns the
 // project+version document: a JSON object of secret id to base64 payload. Marshaling
 // each payload as a JSON string is what keeps it verbatim - no value ever reaches a
-// YAML parser, so "p@ss: word" stays a string and "*abc" is never an alias
-func getSecretManagerFile(path string, links []*Link) ([]byte, error) {
+// YAML parser, so "p@ss: word" stays a string and "*abc" is never an alias.
+// The client comes from pool so sibling groups share one connection; pool owns closing it
+func getSecretManagerFile(path string, links []*Link, pool *secretFetcherPool) ([]byte, error) {
 	project, version, err := parseSecretManagerPath(path)
 	if err != nil {
 		return nil, err
@@ -133,14 +170,14 @@ func getSecretManagerFile(path string, links []*Link) ([]byte, error) {
 	// sorted ids keep fetch dispatch and error output identical run to run
 	sort.Strings(ids)
 
-	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), SecretManagerTimeout)
-	defer cancel()
-
-	fetch, closeFetcher, err := newSecretFetcher(ctx)
+	fetch, err := pool.get()
 	if err != nil {
 		return nil, err
 	}
-	defer closeFetcher()
+
+	// the timeout bounds this batch of fetches, never the shared client
+	ctx, cancel := gocontext.WithTimeout(gocontext.Background(), SecretManagerTimeout)
+	defer cancel()
 
 	// index-addressed results: no shared map writes, nothing to guard with a mutex
 	payloads := make([][]byte, len(ids))
