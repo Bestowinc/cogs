@@ -3,6 +3,7 @@ package cogs
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 
 	"github.com/pelletier/go-toml"
 	"gopkg.in/yaml.v3"
@@ -30,12 +31,30 @@ func marshalComplexValue(v interface{}, inputType Format) (output string, err er
 		b, err = yaml.Marshal(v)
 		output = string(b)
 	case TOML:
+		// TOML has no top-level array or scalar document, so only a table
+		// can round trip; anything else falls back to raw formatting
+		if !isTOMLMarshalable(v) {
+			return fmt.Sprintf("%s", v), nil
+		}
 		b, err = toml.Marshal(v)
 		output = string(b)
 	case Dotenv, Raw:
 		output = fmt.Sprintf("%s", v)
 	}
 	return output, err
+}
+
+// isTOMLMarshalable reports whether v is a table, the only value toml.Marshal accepts
+func isTOMLMarshalable(v interface{}) bool {
+	rv := reflect.ValueOf(v)
+	for rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface {
+		rv = rv.Elem()
+	}
+	switch rv.Kind() {
+	case reflect.Map, reflect.Struct:
+		return true
+	}
+	return false
 }
 
 // Exclude produces a laundered map with exclusionList values missing
