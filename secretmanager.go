@@ -25,6 +25,10 @@ const SecretManagerScheme = "gcpsm://"
 // defaultSecretVersion is used when a GSM link declares no version alias
 const defaultSecretVersion = "latest"
 
+// EncryptedPlaceholder stands in for a GSM payload when NoDecrypt is set: a GSM
+// secret has no local ciphertext form to hand back the way a SOPS value does
+const EncryptedPlaceholder = "[encrypted]"
+
 // SecretManagerConcurrency bounds the number of simultaneous Secret Manager fetches
 var SecretManagerConcurrency int = 8
 

@@ -44,7 +44,7 @@ Options:
   -h --help        Show this screen.
   --version        Show version.
   --no-enc, -n     Skips fetching encrypted vars.
-  --no-decrypt	   Skipts decrypting encrypted vars.
+  --no-decrypt	   Skips decrypting encrypted vars.
   --envsubst, -e   Perform environmental substitution on the given cog file.
   --keys=<key,>    Include specific keys, comma separated.
   --not=<key,>     Exclude specific keys, comma separated.
@@ -150,7 +150,7 @@ Behavior worth knowing:
 * **Failures are reported together.** A batch with several bad secret ids names every one of them, in a stable order, rather than dying on the first.
 * **`.enc` placement is advisory.** A GSM link resolves identically inside or outside an `.enc` block; putting it under `.enc` only signals that the value is sensitive.
 * **`--no-enc`** skips GSM vars under `.enc`, like any other encrypted var.
-* **`--no-decrypt` still fetches.** Unlike SOPS, there is no ciphertext form of a GSM secret to hand back.
+* **`--no-decrypt` yields `[encrypted]`.** Unlike SOPS, there is no ciphertext form of a GSM secret to hand back, so an opaque placeholder stands in for the payload. No fetch is made and no credentials are needed, so the flag works with no GCP access at all. This applies to every `gcpsm://` var, inside `.enc` or not, and a var with a `type` gets the placeholder rather than a parsed map — the same way a typed read of an undecrypted SOPS file yields its ciphertext string. Because nothing is fetched, a secret that does not exist is not reported as missing until a real run.
 
 ## `envsubst` cheatsheet:
 
