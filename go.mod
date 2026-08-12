@@ -1,6 +1,6 @@
 module github.com/Bestowinc/cogs
 
-go 1.25.0
+go 1.26.0
 
 require (
 	cloud.google.com/go/secretmanager v1.14.5
