@@ -150,6 +150,15 @@ func (g *Gear) ResolveMap(ctx baseContext) (CfgMap, error) {
 			continue
 		}
 
+		// NoDecrypt must not reach the network, so the placeholder is assigned before
+		// a path group is built: no client, no credentials, no fetch. A read type
+		// collapses to the placeholder too, matching SOPS, where a typed read of an
+		// undecrypted file yields the ciphertext string rather than a parsed map
+		if NoDecrypt && isSecretManagerPath(link.Path) {
+			link.Value = EncryptedPlaceholder
+			continue
+		}
+
 		if _, ok := pathGroups[link.distinctPath()]; !ok {
 			// read plaintext file into bytes
 			loadFile := readFile

@@ -431,10 +431,45 @@ pw = {path = ["gcpsm://proj", "current"], name = "secret"}
 	}
 }
 
-// NoDecrypt has no ciphertext form to hand back for a GSM secret, so the fetch still happens
-func TestSecretManagerIgnoresNoDecrypt(t *testing.T) {
-	stub := &stubFetcher{payloads: map[string]string{"secret": "pw"}}
+// a GSM secret has no ciphertext form, so NoDecrypt hands back a placeholder
+// instead, and never reaches the network to do it
+func TestSecretManagerNoDecryptPlaceholder(t *testing.T) {
+	stub := &stubFetcher{payloads: map[string]string{"secret": "pw", "json": `{"user":"u"}`}}
 	stub.install(t)
+
+	NoDecrypt = true
+	t.Cleanup(func() { NoDecrypt = false })
+
+	_, cfg, err := genGear(t, "qa", `
+name = "sm"
+[qa.vars]
+plain = {path = ["gcpsm://proj", "current"], name = "secret"}
+[qa.enc.vars]
+pw = {path = ["gcpsm://proj", "current"], name = "secret"}
+typed = {path = ["gcpsm://proj", "current"], name = "json", type = "json"}
+`)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	// a gcpsm link is a secret wherever it is declared, .enc or not
+	for _, key := range []string{"plain", "pw", "typed"} {
+		if cfg[key] != EncryptedPlaceholder {
+			t.Errorf("%s = %q, want %q", key, cfg[key], EncryptedPlaceholder)
+		}
+	}
+	if n := stub.callCount(); n != 0 {
+		t.Errorf("fetched %d times, want 0", n)
+	}
+}
+
+// NoDecrypt needs no credentials at all: a fetcher that cannot even be built
+// must not fail the run
+func TestSecretManagerNoDecryptNeedsNoFetcher(t *testing.T) {
+	orig := newSecretFetcher
+	newSecretFetcher = func(gocontext.Context) (secretFetcher, func(), error) {
+		return nil, nil, fmt.Errorf("no credentials")
+	}
+	t.Cleanup(func() { newSecretFetcher = orig })
 
 	NoDecrypt = true
 	t.Cleanup(func() { NoDecrypt = false })
@@ -447,8 +482,8 @@ pw = {path = ["gcpsm://proj", "current"], name = "secret"}
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
-	if cfg["pw"] != "pw" {
-		t.Errorf("pw = %q, want the fetched value", cfg["pw"])
+	if cfg["pw"] != EncryptedPlaceholder {
+		t.Errorf("pw = %q, want %q", cfg["pw"], EncryptedPlaceholder)
 	}
 }
 
