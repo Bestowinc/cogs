@@ -10,7 +10,7 @@ import (
 
 // OutputCfg returns the corresponding value for a given Link struct
 func OutputCfg(link *Link, outputType Format) (interface{}, error) {
-	if outputType == Dotenv || outputType == Raw {
+	if outputType == Dotenv || outputType == Raw || outputType == Compose {
 		// don't try to marshal simple primitive types
 		if IsSimpleValue(link.Value) {
 			return SimpleValueToString(link.Value)
@@ -36,7 +36,7 @@ func marshalComplexValue(v interface{}, inputType Format) (output string, err er
 			return string(b), nil
 		}
 		output = fmt.Sprintf("%s", v)
-	case Dotenv, Raw:
+	case Dotenv, Raw, Compose:
 		output = fmt.Sprintf("%s", v)
 	}
 	return output, err

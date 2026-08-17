@@ -98,17 +98,18 @@ type Format string
 
 // Formats for respective object notation
 const (
-	JSON   Format = "json"
-	YAML   Format = "yaml"
-	TOML   Format = "toml"
-	Dotenv Format = "dotenv"
-	Raw    Format = "raw"
+	JSON    Format = "json"
+	YAML    Format = "yaml"
+	TOML    Format = "toml"
+	Dotenv  Format = "dotenv"
+	Raw     Format = "raw"
+	Compose Format = "compose"
 )
 
 // Validate ensures that a string maps to a valid Format
 func (t Format) Validate() error {
 	switch t {
-	case JSON, YAML, TOML, Dotenv, Raw:
+	case JSON, YAML, TOML, Dotenv, Raw, Compose:
 		return nil
 	default: // deferred readType should not be validated
 		return fmt.Errorf("%s is an invalid Format", string(t))

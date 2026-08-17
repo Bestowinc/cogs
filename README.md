@@ -49,12 +49,31 @@ Options:
   --keys=<key,>    Include specific keys, comma separated.
   --not=<key,>     Exclude specific keys, comma separated.
   --out=<type>     Configuration output type [default: json].
-                   <type>: json, toml, yaml, dotenv, raw.
+                   <type>: json, toml, yaml, dotenv, compose, raw.
 
-  --export, -x     If --out=dotenv: Prepends "export " to each line.
-  --preserve, -p   If --out=dotenv: Preserves variable casing.
-  --sep=<sep>      If --out=raw:    Delimits values with a <sep>arator.
+  --export, -x     If --out=dotenv:  Prepends "export " to each line.
+  --preserve, -p   If --out=dotenv|compose: Preserves variable casing.
+  --sep=<sep>      If --out=raw:     Delimits values with a <sep>arator.
 ```
+
+## env output formats:
+
+`--out=dotenv` targets a shell: values are quoted and escaped so the file can be
+sourced. `--out=compose` targets Docker's env-file parser, which does not strip
+quotes - `KEY="value"` would reach the container with the quotes intact - so it
+writes bare `KEY=VALUE` lines with no quoting or escaping:
+
+```sh
+# shell-sourceable, values quoted and escaped
+cogs gen prod ./cog.toml --out=dotenv > .env.sh
+
+# Docker env-file: bare KEY=VALUE, consumed as-is by Compose env_file
+cogs gen prod ./cog.toml --out=compose > .env
+```
+
+Docker env-files are line oriented with no escape sequences, so a value holding
+a newline, carriage return, or NUL byte errors out naming the key rather than
+producing a silently broken file.
 
 `cogs gen` - outputs a flat and serialized K:V array
 

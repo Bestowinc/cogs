@@ -95,18 +95,14 @@ func (c *Conf) validate() (format cogs.Format, err error) {
 		return "", fmt.Errorf("invalid opt: --out %s", conf.Output)
 	}
 
-	switch {
-	case format != cogs.Raw:
-		if c.Delimiter != "" {
-			return "", fmt.Errorf("invalid opt: --sep")
-		}
-	case format != cogs.Dotenv:
-		if c.Export {
-			return "", fmt.Errorf("invalid opt: --export")
-		}
-		if c.Preserve {
-			return "", fmt.Errorf("invalid opt: --preserve")
-		}
+	if c.Delimiter != "" && format != cogs.Raw {
+		return "", fmt.Errorf("invalid opt: --sep")
+	}
+	if c.Export && format != cogs.Dotenv {
+		return "", fmt.Errorf("invalid opt: --export")
+	}
+	if c.Preserve && format != cogs.Dotenv && format != cogs.Compose {
+		return "", fmt.Errorf("invalid opt: --preserve")
 	}
 	return format, nil
 }

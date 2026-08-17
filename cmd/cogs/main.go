@@ -15,7 +15,7 @@ import (
 	"github.com/Bestowinc/cogs"
 )
 
-const cogsVersion = "0.11.1"
+const cogsVersion = "0.12.0"
 const usage string = `
 COGS COnfiguration manaGement S
 
@@ -31,11 +31,11 @@ Options:
   --keys=<key,>    Include specific keys, comma separated.
   --not=<key,>     Exclude specific keys, comma separated.
   --out=<type>     Configuration output type [default: json].
-                   <type>: json, toml, yaml, dotenv, raw.
-  
-  --export, -x     If --out=dotenv: Prepends "export " to each line.
-  --preserve, -p   If --out=dotenv: Preserves variable casing.
-  --sep=<sep>      If --out=raw:    Delimits values with a <sep>arator.
+                   <type>: json, toml, yaml, dotenv, compose, raw.
+
+  --export, -x     If --out=dotenv:  Prepends "export " to each line.
+  --preserve, -p   If --out=dotenv|compose: Preserves variable casing.
+  --sep=<sep>      If --out=raw:     Delimits values with a <sep>arator.
  `
 
 // Conf is used to bind CLI arguments and options
@@ -123,6 +123,14 @@ func run() error {
 			}
 			// convert all key values to uppercase
 			output, err = godotenv.Marshal(modKeys(cfgMap, modFn...))
+			output = output + "\n"
+		case cogs.Compose:
+			var modFn []func(string) string
+			// if --preserve was called, do not convert variable names to uppercase
+			if !conf.Preserve {
+				modFn = append(modFn, strings.ToUpper)
+			}
+			output, err = cogs.MarshalCompose(modKeys(cfgMap, modFn...))
 			output = output + "\n"
 		case cogs.Raw:
 			keyList := []string{}

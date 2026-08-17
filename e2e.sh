@@ -3,6 +3,8 @@
 go build -o ./tmp_cogs ./cmd/cogs
 ./tmp_cogs gen basic              ./examples/1.basic.cog.toml
 ./tmp_cogs gen basic              ./examples/1.basic.cog.toml --keys=var --out=toml
+./tmp_cogs gen basic              ./examples/1.basic.cog.toml --out=compose
+./tmp_cogs gen sops               ./examples/3.secrets.cog.toml --out=compose
 ./tmp_cogs gen get                ./examples/2.http.cog.toml
 ./tmp_cogs gen post               ./examples/2.http.cog.toml
 ./tmp_cogs gen post_multiple      ./examples/2.http.cog.toml
