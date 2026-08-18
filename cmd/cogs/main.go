@@ -32,7 +32,6 @@ Options:
   --not=<key,>     Exclude specific keys, comma separated.
   --out=<type>     Configuration output type [default: json].
                    <type>: json, toml, yaml, dotenv, compose, raw.
-
   --export, -x     If --out=dotenv:  Prepends "export " to each line.
   --preserve, -p   If --out=dotenv|compose: Preserves variable casing.
   --sep=<sep>      If --out=raw:     Delimits values with a <sep>arator.
